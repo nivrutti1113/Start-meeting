@@ -18,7 +18,6 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
-  // Request preview camera & microphone stream
   useEffect(() => {
     let isMounted = true;
 
@@ -55,7 +54,6 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
     };
   }, []);
 
-  // Handle Video Toggle
   const toggleVideo = () => {
     if (mediaStreamRef.current) {
       const videoTrack = mediaStreamRef.current.getVideoTracks()[0];
@@ -66,7 +64,6 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
     setVideoEnabled(!videoEnabled);
   };
 
-  // Handle Audio Toggle
   const toggleAudio = () => {
     if (mediaStreamRef.current) {
       const audioTrack = mediaStreamRef.current.getAudioTracks()[0];
@@ -81,7 +78,6 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
     e.preventDefault();
     if (!username.trim()) return;
     
-    // Stop preview stream before joining LiveKit room (LiveKit handles its own stream)
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
     }
@@ -90,23 +86,23 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto py-8 px-4">
+    <div className="w-full max-w-4xl mx-auto py-12 px-4 selection:bg-sky-500 selection:text-white">
       <div className="text-center mb-8">
-        <span className="inline-flex items-center gap-1.5 bg-sky-100 text-sky-800 text-xs font-semibold px-3 py-1 rounded-full border border-sky-200 mb-3">
-          <Camera className="w-3.5 h-3.5 text-sky-600" /> Pre-Meeting Lobby
+        <span className="inline-flex items-center gap-1.5 bg-sky-500/10 text-sky-400 text-xs font-semibold px-3.5 py-1.5 rounded-full border border-sky-500/30 mb-3">
+          <Camera className="w-3.5 h-3.5 text-sky-400" /> Pre-Meeting Lobby
         </span>
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+        <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
           Ready to join room?
         </h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Room ID: <code className="bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-mono text-xs border border-sky-200">{roomId}</code>
+        <p className="text-slate-400 text-xs mt-1.5">
+          Room Session ID: <code className="bg-slate-900 text-sky-400 px-2.5 py-1 rounded font-mono text-xs border border-slate-800">{roomId}</code>
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
         {/* Left Side: Camera Preview Container */}
         <div className="md:col-span-7 flex flex-col items-center">
-          <div className="relative w-full aspect-video bg-slate-900 rounded-2xl overflow-hidden shadow-xl shadow-sky-100/50 border-2 border-sky-200 flex items-center justify-center">
+          <div className="relative w-full aspect-video bg-[#090d16] rounded-3xl overflow-hidden shadow-2xl border border-slate-800 flex items-center justify-center">
             {videoEnabled && hasPermissions !== false ? (
               <video
                 ref={videoRef}
@@ -116,8 +112,8 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
                 className="w-full h-full object-cover -scale-x-100"
               />
             ) : (
-              <div className="flex flex-col items-center justify-center text-slate-400 p-6 text-center">
-                <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-3">
+              <div className="flex flex-col items-center justify-center text-slate-500 p-6 text-center">
+                <div className="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center mb-3 border border-slate-800">
                   <VideoOff className="w-8 h-8 text-slate-500" />
                 </div>
                 <p className="text-sm font-medium text-slate-300">Camera is turned off</p>
@@ -128,14 +124,14 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
             )}
 
             {/* Video Controls Overlay */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 shadow-lg">
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-slate-950/80 backdrop-blur-md px-4 py-2 rounded-full border border-slate-800 shadow-xl">
               <button
                 type="button"
                 onClick={toggleAudio}
                 className={`p-3 rounded-full transition-all ${
                   audioEnabled
                     ? "bg-slate-800 text-white hover:bg-slate-700"
-                    : "bg-red-500/90 text-white hover:bg-red-600"
+                    : "bg-red-600/90 text-white hover:bg-red-600"
                 }`}
                 title={audioEnabled ? "Mute Microphone" : "Unmute Microphone"}
               >
@@ -148,7 +144,7 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
                 className={`p-3 rounded-full transition-all ${
                   videoEnabled
                     ? "bg-slate-800 text-white hover:bg-slate-700"
-                    : "bg-red-500/90 text-white hover:bg-red-600"
+                    : "bg-red-600/90 text-white hover:bg-red-600"
                 }`}
                 title={videoEnabled ? "Turn Off Camera" : "Turn On Camera"}
               >
@@ -157,21 +153,21 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-500 mt-3">
-            <CheckCircle2 className="w-4 h-4 text-sky-500" />
-            <span>Audio & Video hardware checked</span>
+          <div className="flex items-center gap-2 text-xs text-slate-400 mt-3 font-mono">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <span>Audio & Video WebRTC devices active</span>
           </div>
         </div>
 
         {/* Right Side: Display Name Input & Join Form */}
-        <div className="md:col-span-5 bg-white p-6 sm:p-8 rounded-2xl border border-sky-100 shadow-xl shadow-sky-100/50">
+        <div className="md:col-span-5 glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800/80 shadow-2xl">
           <form onSubmit={handleFormSubmit} className="flex flex-col gap-5">
             <div>
-              <label htmlFor="username" className="block text-sm font-semibold text-slate-800 mb-2">
+              <label htmlFor="username" className="block text-sm font-semibold text-white mb-2">
                 Your Display Name
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-sky-500">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-sky-400">
                   <User className="w-5 h-5" />
                 </div>
                 <input
@@ -181,25 +177,25 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
                   placeholder="e.g. Rahul Sharma"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-sky-50/50 border border-sky-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white text-sm font-medium transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-sky-500 text-sm font-medium transition-all"
                   autoFocus
                 />
               </div>
-              <p className="text-xs text-slate-500 mt-1.5">
-                This name will be visible to other meeting participants.
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                This name will be attributed to your speaker audio transcripts.
               </p>
             </div>
 
-            <div className="bg-sky-50 rounded-xl p-4 border border-sky-100 space-y-2">
+            <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-2">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-600 font-medium">Microphone Status</span>
-                <span className={`font-semibold ${audioEnabled ? 'text-sky-700' : 'text-red-600'}`}>
+                <span className="text-slate-400 font-medium">Microphone</span>
+                <span className={`font-semibold ${audioEnabled ? 'text-sky-400' : 'text-red-400'}`}>
                   {audioEnabled ? 'Active (Unmuted)' : 'Muted'}
                 </span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-600 font-medium">Camera Status</span>
-                <span className={`font-semibold ${videoEnabled ? 'text-sky-700' : 'text-slate-500'}`}>
+                <span className="text-slate-400 font-medium">Camera</span>
+                <span className={`font-semibold ${videoEnabled ? 'text-sky-400' : 'text-slate-500'}`}>
                   {videoEnabled ? 'Active' : 'Off'}
                 </span>
               </div>
@@ -208,7 +204,7 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
             <button
               type="submit"
               disabled={!username.trim()}
-              className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-semibold shadow-lg shadow-sky-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 group transition-all"
+              className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold shadow-lg shadow-sky-500/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 group transition-all"
             >
               <span>Join Meeting Now</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -219,3 +215,4 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
     </div>
   );
 }
+

@@ -58,14 +58,14 @@ export default function MeetingRoomPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-sky-50/50 p-6">
-        <div className="bg-white p-8 rounded-3xl border border-sky-100 shadow-2xl shadow-sky-100/50 flex flex-col items-center text-center max-w-sm w-full">
-          <div className="w-14 h-14 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center mb-4">
+      <div className="flex-1 flex flex-col items-center justify-center bg-[#0b0f19] p-6 selection:bg-sky-500 selection:text-white">
+        <div className="glass-panel p-8 rounded-3xl border border-slate-800 shadow-2xl flex flex-col items-center text-center max-w-sm w-full">
+          <div className="w-14 h-14 rounded-2xl bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center justify-center mb-4">
             <Loader2 className="w-8 h-8 animate-spin" />
           </div>
-          <h3 className="text-lg font-bold text-slate-900">Connecting to Room</h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Establishing secure encrypted video connection for <code className="text-sky-700 font-mono">{roomId}</code>...
+          <h3 className="text-lg font-bold text-white">Connecting to Session</h3>
+          <p className="text-xs text-slate-400 mt-1">
+            Issuing WebRTC LiveKit JWT token for <code className="text-sky-400 font-mono">{roomId}</code>...
           </p>
         </div>
       </div>
@@ -74,21 +74,21 @@ export default function MeetingRoomPage() {
 
   if (errorMessage) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-sky-50/50 p-6">
-        <div className="bg-white p-8 rounded-3xl border border-red-100 shadow-2xl flex flex-col items-center text-center max-w-md w-full">
-          <div className="w-14 h-14 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mb-4">
+      <div className="flex-1 flex flex-col items-center justify-center bg-[#0b0f19] p-6 selection:bg-sky-500 selection:text-white">
+        <div className="glass-panel p-8 rounded-3xl border border-red-500/30 shadow-2xl flex flex-col items-center text-center max-w-md w-full">
+          <div className="w-14 h-14 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center mb-4">
             <AlertTriangle className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-bold text-slate-900">Connection Failed</h3>
-          <p className="text-xs text-red-600 mt-2 bg-red-50 p-3 rounded-xl border border-red-100 w-full text-left">
+          <h3 className="text-lg font-bold text-white">Connection Error</h3>
+          <p className="text-xs text-red-300 mt-2 bg-red-500/10 p-3 rounded-xl border border-red-500/20 w-full text-left font-mono">
             {errorMessage}
           </p>
 
           <button
             onClick={() => setErrorMessage(null)}
-            className="mt-6 w-full py-3 bg-sky-500 hover:bg-sky-600 text-white font-semibold rounded-xl text-sm transition-all flex items-center justify-center gap-2"
+            className="mt-6 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 border border-slate-700/60"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4 text-sky-400" />
             <span>Try Again</span>
           </button>
         </div>
@@ -110,3 +110,4 @@ export default function MeetingRoomPage() {
 
   return <PreJoinLobby roomId={roomId} onJoin={handleJoinLobby} />;
 }
+

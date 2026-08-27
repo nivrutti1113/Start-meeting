@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bot, CheckSquare, Sparkles, RefreshCw, Play, Clock, User, Target, Quote, ListChecks, HelpCircle, AlertCircle } from "lucide-react";
+import { Bot, CheckSquare, Sparkles, RefreshCw, Play, Clock, User, Target, Quote, ListChecks, HelpCircle, AlertCircle, ChevronRight } from "lucide-react";
 
 interface TaskItem {
   id: string;
@@ -83,42 +83,42 @@ export default function AdminTasksPage() {
   };
 
   return (
-    <div className="w-full min-h-screen bg-gradient-to-b from-sky-50/70 via-white to-sky-50/40 p-4 sm:p-8">
+    <div className="w-full min-h-screen bg-[#0b0f19] text-slate-100 p-4 sm:p-8 selection:bg-sky-500 selection:text-white">
       <div className="max-w-7xl mx-auto">
-        {/* Top Title Banner */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        {/* Top Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 glass-panel p-6 rounded-3xl border border-slate-800/80">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-100 text-sky-800 text-xs font-semibold border border-sky-200 mb-2">
-              <Bot className="w-3.5 h-3.5 text-sky-600" /> Anthropic Claude AI Task Extraction
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 text-indigo-400 text-xs font-semibold border border-indigo-500/30 mb-2">
+              <Bot className="w-3.5 h-3.5 text-indigo-400" /> Anthropic Claude 3.5 Sonnet Engine
             </div>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              AI Task & Summary Inspector
+            <h1 className="text-3xl font-black text-white tracking-tight">
+              AI Task & Intelligence Inspector
             </h1>
-            <p className="text-slate-500 text-xs mt-1">
-              Phase 3: Automated meeting summaries, key decisions, and task parsing before WhatsApp/Email dispatch.
+            <p className="text-slate-400 text-xs mt-1">
+              Automated meeting summaries, extracted key decisions, and structured task parsing before dispatching.
             </p>
           </div>
 
           <button
             onClick={fetchMeetings}
-            className="self-start sm:self-auto px-4 py-2 bg-white border border-sky-200 hover:bg-sky-50 text-sky-700 text-xs font-semibold rounded-xl flex items-center gap-2 shadow-sm transition-all"
+            className="self-start sm:self-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-semibold rounded-xl flex items-center gap-2 border border-slate-700/60 shadow-md transition-all"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh Meetings</span>
+            <span>Refresh Sessions</span>
           </button>
         </div>
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left List: Meeting Selector */}
-          <div className="lg:col-span-4 bg-white p-5 rounded-3xl border border-sky-100 shadow-xl shadow-sky-100/50 flex flex-col gap-3">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider text-xs mb-1">
-              Select Meeting Room
+          {/* Left Column: Meeting Selector Sidebar */}
+          <div className="lg:col-span-4 glass-panel p-5 rounded-3xl border border-slate-800/80 shadow-2xl flex flex-col gap-3">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+              Select Meeting Session
             </h3>
 
             {meetings.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-400 bg-sky-50/50 rounded-2xl border border-sky-100">
-                No meetings found. Start a call first or visit Transcripts admin page.
+              <div className="p-8 text-center text-xs text-slate-500 bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+                No recorded meetings available.
               </div>
             ) : (
               meetings.map((m) => {
@@ -130,52 +130,52 @@ export default function AdminTasksPage() {
                     onClick={() => setSelectedMeetingId(m.id)}
                     className={`p-4 rounded-2xl border transition-all cursor-pointer ${
                       isSelected
-                        ? "bg-sky-50 border-sky-400 shadow-md shadow-sky-100"
-                        : "bg-white border-slate-200 hover:border-sky-200 hover:bg-sky-50/30"
+                        ? "bg-sky-500/10 border-sky-500/50 shadow-lg shadow-sky-500/10"
+                        : "bg-slate-900/50 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900"
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-sm text-slate-900 font-mono">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-mono font-bold text-sm text-white">
                         {m.roomName}
                       </span>
                       <span
-                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                           hasTasks
-                            ? "bg-sky-100 text-sky-800 border border-sky-200"
-                            : "bg-slate-100 text-slate-600 border border-slate-200"
+                            ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
+                            : "bg-slate-800 text-slate-400 border-slate-700"
                         }`}
                       >
                         {m.tasks ? `${m.tasks.length} Tasks` : "0 Tasks"}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500 truncate">{m.title}</p>
+                    <p className="text-xs text-slate-400 truncate">{m.title}</p>
                   </div>
                 );
               })
             )}
           </div>
 
-          {/* Right Area: Summary & Task Cards */}
+          {/* Right Column: AI Summary & Task Inspection Cards */}
           <div className="lg:col-span-8 space-y-6">
             {selectedMeeting ? (
               <>
-                {/* Executive Summary Card */}
-                <div className="bg-white p-6 sm:p-8 rounded-3xl border border-sky-100 shadow-xl shadow-sky-100/50">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-4 border-b border-sky-100 gap-3">
+                {/* Summary Card */}
+                <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800/80 shadow-2xl space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800/80 gap-3">
                     <div>
-                      <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-sky-500" />
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-sky-400" />
                         <span>Executive Summary & Key Decisions</span>
                       </h3>
-                      <p className="text-xs text-slate-500">
-                        Room: <code className="font-mono text-sky-700">{selectedMeeting.roomName}</code>
+                      <p className="text-xs text-slate-400">
+                        Session Code: <code className="font-mono text-sky-400">{selectedMeeting.roomName}</code>
                       </p>
                     </div>
 
                     <button
                       onClick={() => handleRunAiExtraction(selectedMeeting.id)}
                       disabled={extracting}
-                      className="px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-semibold rounded-xl text-xs shadow-md shadow-sky-200 flex items-center gap-2 transition-all self-start sm:self-auto"
+                      className="px-5 py-2.5 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-sky-500/20 flex items-center gap-2 transition-all self-start sm:self-auto disabled:opacity-50"
                     >
                       <Bot className="w-4 h-4" />
                       <span>{extracting ? "Running Claude AI..." : "Run AI Task Extraction"}</span>
@@ -184,24 +184,22 @@ export default function AdminTasksPage() {
 
                   {currentSummary ? (
                     <div className="space-y-4">
-                      {/* Overall Summary */}
-                      <div className="p-4 bg-sky-50/60 rounded-2xl border border-sky-100 text-sm text-slate-700 leading-relaxed">
-                        <span className="block font-bold text-xs text-sky-900 uppercase tracking-wide mb-1">
-                          Overall Summary (4-5 Lines)
+                      <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-xs text-slate-300 leading-relaxed">
+                        <span className="block font-bold text-[11px] text-sky-400 uppercase tracking-wider mb-1.5">
+                          Executive Summary
                         </span>
                         {currentSummary.summaryText}
                       </div>
 
-                      {/* Key Decisions */}
                       {keyDecisions.length > 0 && (
                         <div>
-                          <span className="block font-bold text-xs text-slate-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                            <ListChecks className="w-4 h-4 text-sky-600" /> Key Decisions Made
+                          <span className="block font-bold text-xs text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                            <ListChecks className="w-4 h-4 text-emerald-400" /> Key Decisions Made
                           </span>
-                          <ul className="space-y-1.5 pl-2">
+                          <ul className="space-y-2">
                             {keyDecisions.map((dec, idx) => (
-                              <li key={idx} className="flex items-start gap-2 text-xs text-slate-600">
-                                <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-1.5 shrink-0" />
+                              <li key={idx} className="flex items-start gap-2.5 text-xs text-slate-300 bg-slate-900/50 p-2.5 rounded-xl border border-slate-800/80">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 mt-1 shrink-0" />
                                 <span>{dec}</span>
                               </li>
                             ))}
@@ -210,107 +208,87 @@ export default function AdminTasksPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="p-6 text-center text-xs text-slate-400 bg-sky-50/30 rounded-2xl border border-dashed border-sky-200">
-                      No AI summary generated yet for this room. Click "Run AI Task Extraction" above.
+                    <div className="p-8 text-center text-xs text-slate-500 bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+                      No AI summary generated yet. Click "Run AI Task Extraction" above.
                     </div>
                   )}
                 </div>
 
-                {/* Extracted Tasks Cards */}
-                <div className="bg-white p-6 sm:p-8 rounded-3xl border border-sky-100 shadow-xl shadow-sky-100/50">
-                  <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <CheckSquare className="w-5 h-5 text-sky-600" />
-                    <span>Extracted Actionable Tasks ({currentTasks.length})</span>
+                {/* Tasks Extracted Cards */}
+                <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800/80 shadow-2xl space-y-4">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <CheckSquare className="w-5 h-5 text-indigo-400" />
+                    <span>Extracted Action Items ({currentTasks.length})</span>
                   </h3>
 
                   {currentTasks.length > 0 ? (
                     <div className="grid grid-cols-1 gap-4">
                       {currentTasks.map((t) => {
-                        let priorityColor = "bg-sky-100 text-sky-800 border-sky-200";
-                        if (t.priority === "High") priorityColor = "bg-red-100 text-red-800 border-red-200";
-                        if (t.priority === "Low") priorityColor = "bg-slate-100 text-slate-700 border-slate-200";
+                        let priorityBadge = "bg-sky-500/10 text-sky-400 border-sky-500/30";
+                        if (t.priority === "High") priorityBadge = "bg-red-500/10 text-red-400 border-red-500/30";
+                        if (t.priority === "Low") priorityBadge = "bg-slate-800 text-slate-400 border-slate-700";
 
                         return (
                           <div
                             key={t.id}
-                            className="p-5 rounded-2xl border border-sky-100 bg-slate-50/50 hover:bg-white hover:border-sky-200 shadow-sm transition-all flex flex-col gap-3"
+                            className="p-5 rounded-2xl border border-slate-800/80 bg-slate-900/50 hover:border-slate-700 transition-all flex flex-col gap-3"
                           >
-                            {/* Task Header: Priority & Assignees */}
-                            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/80">
-                              <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
-                                <User className="w-3.5 h-3.5 text-sky-600" />
+                            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
+                              <div className="flex items-center gap-2 text-xs text-slate-300">
+                                <User className="w-3.5 h-3.5 text-sky-400" />
                                 <span>{t.assignedBy}</span>
-                                <span className="text-slate-400">→</span>
-                                <span className="bg-sky-100 text-sky-900 font-bold px-2 py-0.5 rounded-lg border border-sky-200">
+                                <span className="text-slate-500">→</span>
+                                <span className="bg-sky-500/10 text-sky-300 font-bold px-2.5 py-0.5 rounded-lg border border-sky-500/30">
                                   {t.assignedTo}
                                 </span>
                               </div>
 
                               <div className="flex items-center gap-2">
-                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${priorityColor}`}>
+                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${priorityBadge}`}>
                                   {t.priority} Priority
-                                </span>
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-                                  {t.status}
                                 </span>
                               </div>
                             </div>
 
-                            {/* Task Description */}
-                            <h4 className="font-bold text-slate-900 text-sm">
+                            <h4 className="font-bold text-white text-sm">
                               {t.taskDescription}
                             </h4>
 
-                            {/* Details Grid */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-300">
                               {t.howTo && (
-                                <div className="bg-white p-3 rounded-xl border border-slate-200/80">
-                                  <span className="font-semibold text-slate-800 block text-[11px] mb-0.5 flex items-center gap-1">
-                                    <HelpCircle className="w-3 h-3 text-sky-500" /> How to Build/Do:
-                                  </span>
+                                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                                  <span className="font-semibold text-sky-400 block text-[11px] mb-1">How To Build:</span>
                                   {t.howTo}
                                 </div>
                               )}
 
                               {t.goal && (
-                                <div className="bg-white p-3 rounded-xl border border-slate-200/80">
-                                  <span className="font-semibold text-slate-800 block text-[11px] mb-0.5 flex items-center gap-1">
-                                    <Target className="w-3 h-3 text-emerald-500" /> Goal/Purpose:
-                                  </span>
+                                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                                  <span className="font-semibold text-emerald-400 block text-[11px] mb-1">Purpose / Goal:</span>
                                   {t.goal}
                                 </div>
                               )}
                             </div>
 
-                            {/* Footer: Deadline & Source Quote */}
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 text-[11px] text-slate-500">
-                              {t.deadline && (
-                                <span className="flex items-center gap-1 font-semibold text-slate-700">
-                                  <Clock className="w-3.5 h-3.5 text-sky-600" />
-                                  Deadline: {t.deadline}
-                                </span>
-                              )}
-
-                              {t.sourceQuote && (
-                                <span className="italic flex items-center gap-1 text-slate-400">
-                                  <Quote className="w-3 h-3 shrink-0" />
-                                  "{t.sourceQuote}"
-                                </span>
-                              )}
-                            </div>
+                            {t.sourceQuote && (
+                              <div className="pt-2 text-[11px] text-slate-400 italic flex items-center gap-1.5 font-mono">
+                                <Quote className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                "{t.sourceQuote}"
+                              </div>
+                            )}
                           </div>
                         );
                       })}
                     </div>
                   ) : (
-                    <div className="p-8 text-center text-xs text-slate-400 bg-sky-50/20 rounded-2xl border border-slate-200">
-                      No tasks extracted yet. Click "Run AI Task Extraction" above to generate tasks from the transcript.
+                    <div className="p-8 text-center text-xs text-slate-500 bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+                      No tasks extracted yet. Click "Run AI Task Extraction" above.
                     </div>
                   )}
                 </div>
               </>
             ) : (
-              <div className="p-12 text-center text-slate-400 bg-white rounded-3xl border border-sky-100">
+              <div className="p-12 text-center text-slate-500 glass-panel rounded-3xl border border-slate-800">
                 Select a meeting from the left list to view tasks & summary.
               </div>
             )}
@@ -320,3 +298,4 @@ export default function AdminTasksPage() {
     </div>
   );
 }
+
