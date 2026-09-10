@@ -74,13 +74,24 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
     setAudioEnabled(!audioEnabled);
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const [isJoining, setIsJoining] = useState(false);
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim()) return;
+    if (!username.trim() || isJoining) return;
+
+    setIsJoining(true);
     
+    // Stop local preview tracks so OS camera driver can release the device
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+      mediaStreamRef.current = null;
     }
+
+    // Give OS camera hardware driver 400ms to fully release device lock before LiveKitRoom mounts
+    await new Promise((resolve) => setTimeout(resolve, 400));
 
     onJoin(username.trim(), audioEnabled, videoEnabled);
   };
@@ -203,11 +214,17 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
 
             <button
               type="submit"
-              disabled={!username.trim()}
+              disabled={!username.trim() || isJoining}
               className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold shadow-lg shadow-sky-500/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 group transition-all"
             >
-              <span>Join Meeting Now</span>
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              {isJoining ? (
+                <span>Releasing Hardware & Connecting...</span>
+              ) : (
+                <>
+                  <span>Join Meeting Now</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </button>
           </form>
         </div>

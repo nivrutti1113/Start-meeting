@@ -8,9 +8,10 @@ import {
   GridLayout,
   ParticipantTile,
   useTracks,
+  useConnectionState,
   TrackRefContext,
 } from "@livekit/components-react";
-import { Track } from "livekit-client";
+import { Track, DisconnectReason, ConnectionState } from "livekit-client";
 import { Share2, PhoneOff, Users, ShieldAlert, Sparkles, Copy, Check, FileText, Bot, X } from "lucide-react";
 import { ShareMeetingModal } from "./ShareMeetingModal";
 
@@ -35,6 +36,20 @@ export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: Acti
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
+  const handleDisconnected = (reason?: DisconnectReason) => {
+    console.log("[LiveKit] Room disconnected. Reason:", reason);
+    // Only redirect if disconnect was explicitly initiated by user or room deleted
+    if (
+      reason === DisconnectReason.CLIENT_INITIATED ||
+      reason === DisconnectReason.ROOM_DELETED ||
+      reason === undefined
+    ) {
+      onLeave();
+    } else {
+      console.warn("[LiveKit] Transient disconnect detected. Suppressing instant redirect to allow auto-reconnect.");
+    }
+  };
+
   return (
     <LiveKitRoom
       video={true}
@@ -42,7 +57,15 @@ export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: Acti
       token={token}
       serverUrl={wsUrl}
       data-lk-theme="default"
-      onDisconnected={onLeave}
+      connect={true}
+      onConnected={() => console.log("[LiveKit] Connected to room:", roomId)}
+      onDisconnected={handleDisconnected}
+      onMediaDeviceFailure={(failure) => {
+        console.warn("[LiveKit] Media Device Failure detected:", failure);
+      }}
+      onError={(error) => {
+        console.error("[LiveKit] Room Error:", error);
+      }}
       className="relative flex flex-col h-[calc(100vh-4rem)] w-full bg-[#090d16] overflow-hidden font-sans"
     >
       {/* Top Header Bar */}
@@ -206,6 +229,8 @@ export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: Acti
 }
 
 function MyVideoConference() {
+  const connectionState = useConnectionState();
+
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
