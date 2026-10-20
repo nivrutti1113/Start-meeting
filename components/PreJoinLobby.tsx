@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Mic, MicOff, Video as VideoIcon, VideoOff, User, ArrowRight, Camera, Settings, CheckCircle2 } from "lucide-react";
+import { Mic, MicOff, Video as VideoIcon, VideoOff, User, ArrowRight, Camera, Settings, CheckCircle2, Volume2, FlipHorizontal, ShieldCheck, Sparkles } from "lucide-react";
 
 interface PreJoinLobbyProps {
   roomId: string;
@@ -12,11 +12,16 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
   const [username, setUsername] = useState("");
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [videoEnabled, setVideoEnabled] = useState(true);
+  const [isMirrored, setIsMirrored] = useState(true);
   const [hasPermissions, setHasPermissions] = useState<boolean | null>(null);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [audioLevel, setAudioLevel] = useState<number>(0);
+  const [playingTestAudio, setPlayingTestAudio] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -34,6 +39,35 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
             videoRef.current.srcObject = stream;
           }
           setHasPermissions(true);
+
+          // Set up AudioContext Analyser for real mic level visualization
+          try {
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            const audioCtx = new AudioCtx();
+            audioContextRef.current = audioCtx;
+            const source = audioCtx.createMediaStreamSource(stream);
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 64;
+            source.connect(analyser);
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+            const updateMeter = () => {
+              if (!isMounted) return;
+              analyser.getByteFrequencyData(dataArray);
+              let sum = 0;
+              for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+              }
+              const average = sum / dataArray.length;
+              setAudioLevel(Math.min(100, Math.round((average / 128) * 100)));
+              animationFrameRef.current = requestAnimationFrame(updateMeter);
+            };
+
+            updateMeter();
+          } catch (audioErr) {
+            console.warn("Audio meter setup skipped:", audioErr);
+          }
         }
       } catch (err: any) {
         console.warn("Media devices error or permission denied:", err);
@@ -48,6 +82,8 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
 
     return () => {
       isMounted = false;
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -74,6 +110,39 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
     setAudioEnabled(!audioEnabled);
   };
 
+  /**
+   * Pleasant synthesized audio chime to test user's speakers
+   */
+  const playSpeakerTestChime = () => {
+    try {
+      setPlayingTestAudio(true);
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.3); // A5
+
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.8);
+
+      setTimeout(() => {
+        setPlayingTestAudio(false);
+        ctx.close().catch(() => {});
+      }, 900);
+    } catch (e) {
+      setPlayingTestAudio(false);
+    }
+  };
+
   const [isJoining, setIsJoining] = useState(false);
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -81,8 +150,11 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
     if (!username.trim() || isJoining) return;
 
     setIsJoining(true);
-    
-    // Stop local preview tracks so OS camera driver can release the device
+
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
+
+    // Stop local preview tracks so OS camera driver can release device lock
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => {
         track.stop();
@@ -120,29 +192,26 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover -scale-x-100"
+                className={`w-full h-full object-cover ${isMirrored ? "-scale-x-100" : ""}`}
               />
             ) : (
-              <div className="flex flex-col items-center justify-center text-slate-500 p-6 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center mb-3 border border-slate-800">
-                  <VideoOff className="w-8 h-8 text-slate-500" />
+              <div className="flex flex-col items-center gap-3 text-slate-500">
+                <div className="w-20 h-20 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400">
+                  <User className="w-10 h-10" />
                 </div>
-                <p className="text-sm font-medium text-slate-300">Camera is turned off</p>
-                {permissionError && (
-                  <p className="text-xs text-amber-400 mt-2 max-w-xs">{permissionError}</p>
-                )}
+                <span className="text-xs font-semibold">Camera is turned off</span>
               </div>
             )}
 
-            {/* Video Controls Overlay */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-slate-950/80 backdrop-blur-md px-4 py-2 rounded-full border border-slate-800 shadow-xl">
+            {/* Quick Media Controls Overlay */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 rounded-2xl bg-[#0b0f19]/90 border border-slate-800/80 backdrop-blur-md shadow-lg">
               <button
                 type="button"
                 onClick={toggleAudio}
-                className={`p-3 rounded-full transition-all ${
+                className={`p-3 rounded-xl transition-all ${
                   audioEnabled
                     ? "bg-slate-800 text-white hover:bg-slate-700"
-                    : "bg-red-600/90 text-white hover:bg-red-600"
+                    : "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30"
                 }`}
                 title={audioEnabled ? "Mute Microphone" : "Unmute Microphone"}
               >
@@ -152,84 +221,130 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
               <button
                 type="button"
                 onClick={toggleVideo}
-                className={`p-3 rounded-full transition-all ${
+                className={`p-3 rounded-xl transition-all ${
                   videoEnabled
                     ? "bg-slate-800 text-white hover:bg-slate-700"
-                    : "bg-red-600/90 text-white hover:bg-red-600"
+                    : "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30"
                 }`}
                 title={videoEnabled ? "Turn Off Camera" : "Turn On Camera"}
               >
                 {videoEnabled ? <VideoIcon className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
               </button>
+
+              <button
+                type="button"
+                onClick={() => setIsMirrored(!isMirrored)}
+                className={`p-3 rounded-xl transition-all ${
+                  isMirrored
+                    ? "bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                    : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white"
+                }`}
+                title="Toggle Mirror Camera"
+              >
+                <FlipHorizontal className="w-5 h-5" />
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400 mt-3 font-mono">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>Audio & Video WebRTC devices active</span>
-          </div>
-        </div>
-
-        {/* Right Side: Display Name Input & Join Form */}
-        <div className="md:col-span-5 glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800/80 shadow-2xl">
-          <form onSubmit={handleFormSubmit} className="flex flex-col gap-5">
-            <div>
-              <label htmlFor="username" className="block text-sm font-semibold text-white mb-2">
-                Your Display Name
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-sky-400">
-                  <User className="w-5 h-5" />
-                </div>
-                <input
-                  id="username"
-                  type="text"
-                  required
-                  placeholder="e.g. Rahul Sharma"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-sky-500 text-sm font-medium transition-all"
-                  autoFocus
+          {/* Real-Time Mic Level & Speaker Test Utility */}
+          <div className="w-full mt-4 flex items-center justify-between px-2 gap-4">
+            {/* Mic Level Visualizer */}
+            <div className="flex items-center gap-2 flex-1">
+              <Mic className={`w-3.5 h-3.5 shrink-0 ${audioEnabled && audioLevel > 5 ? "text-emerald-400" : "text-slate-500"}`} />
+              <div className="flex-1 h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 transition-all duration-75"
+                  style={{ width: `${audioEnabled ? audioLevel : 0}%` }}
                 />
               </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">
-                This name will be attributed to your speaker audio transcripts.
-              </p>
+              <span className="text-[10px] text-slate-500 font-mono w-8 text-right">
+                {audioEnabled ? `${audioLevel}%` : "Muted"}
+              </span>
             </div>
 
-            <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-2">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-400 font-medium">Microphone</span>
-                <span className={`font-semibold ${audioEnabled ? 'text-sky-400' : 'text-red-400'}`}>
-                  {audioEnabled ? 'Active (Unmuted)' : 'Muted'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-400 font-medium">Camera</span>
-                <span className={`font-semibold ${videoEnabled ? 'text-sky-400' : 'text-slate-500'}`}>
-                  {videoEnabled ? 'Active' : 'Off'}
-                </span>
-              </div>
-            </div>
-
+            {/* Test Speaker Button */}
             <button
-              type="submit"
-              disabled={!username.trim() || isJoining}
-              className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold shadow-lg shadow-sky-500/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 group transition-all"
+              type="button"
+              onClick={playSpeakerTestChime}
+              disabled={playingTestAudio}
+              className="text-[11px] font-semibold text-slate-400 hover:text-sky-400 flex items-center gap-1.5 px-3 py-1 bg-slate-900 border border-slate-800 rounded-lg hover:border-sky-500/30 transition-all shrink-0"
             >
-              {isJoining ? (
-                <span>Releasing Hardware & Connecting...</span>
-              ) : (
-                <>
-                  <span>Join Meeting Now</span>
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
+              <Volume2 className={`w-3.5 h-3.5 ${playingTestAudio ? "text-sky-400 animate-pulse" : ""}`} />
+              <span>{playingTestAudio ? "Testing..." : "Test Speaker"}</span>
             </button>
-          </form>
+          </div>
+
+          {permissionError && (
+            <p className="text-xs text-amber-400 mt-3 text-center bg-amber-500/10 px-4 py-2 rounded-xl border border-amber-500/20 w-full">
+              {permissionError}
+            </p>
+          )}
+        </div>
+
+        {/* Right Side: Participant Name & Join Form */}
+        <div className="md:col-span-5">
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-2xl relative">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="w-8 h-8 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center border border-sky-500/20">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base">Enter Session</h3>
+                <p className="text-[11px] text-slate-400">Set your display name to connect</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleFormSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Display Name
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Alex Vance"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder:text-slate-600 text-sm font-medium focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                <div className="flex items-center justify-between text-xs py-1">
+                  <span className="text-slate-400">Microphone</span>
+                  <span className={`font-semibold ${audioEnabled ? "text-emerald-400" : "text-slate-500"}`}>
+                    {audioEnabled ? "Enabled" : "Muted"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs py-1">
+                  <span className="text-slate-400">Camera</span>
+                  <span className={`font-semibold ${videoEnabled ? "text-emerald-400" : "text-slate-500"}`}>
+                    {videoEnabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs py-1">
+                  <span className="text-slate-400">AI Task Extraction</span>
+                  <span className="text-sky-400 font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> Active
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={!username.trim() || isJoining}
+                className="w-full mt-4 py-3.5 px-6 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 text-white font-bold rounded-xl text-sm shadow-lg shadow-sky-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+              >
+                <span>{isJoining ? "Entering Room..." : "Join Meeting Now"}</span>
+                <ArrowRight className="w-4 h-4 text-sky-200" />
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
   );
 }
-

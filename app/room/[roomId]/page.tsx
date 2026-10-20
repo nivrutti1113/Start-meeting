@@ -19,6 +19,7 @@ export default function MeetingRoomPage() {
     token: string;
     wsUrl: string;
     isDevKeyMode: boolean;
+    isHost?: boolean;
   } | null>(null);
 
   const handleJoinLobby = async (username: string) => {
@@ -40,6 +41,7 @@ export default function MeetingRoomPage() {
         token: data.token,
         wsUrl: data.wsUrl,
         isDevKeyMode: !!data.isDevKeyMode,
+        isHost: !!data.isHost,
       });
       setJoined(true);
     } catch (err: any) {
@@ -53,7 +55,7 @@ export default function MeetingRoomPage() {
   const handleLeaveRoom = () => {
     setJoined(false);
     setTokenData(null);
-    router.push("/");
+    router.push("/dashboard/company");
   };
 
   if (loading) {
@@ -103,6 +105,7 @@ export default function MeetingRoomPage() {
         token={tokenData.token}
         wsUrl={tokenData.wsUrl}
         isDevKeyMode={tokenData.isDevKeyMode}
+        isHost={tokenData.isHost}
         onLeave={handleLeaveRoom}
       />
     );

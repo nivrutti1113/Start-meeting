@@ -28,6 +28,9 @@ yarn-error.log*
 prisma/dev.db
 prisma/dev.db-journal
 
+# recordings
+/public/recordings/
+
 # vercel
 .vercel
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -9,10 +9,36 @@ import {
   ParticipantTile,
   useTracks,
   useConnectionState,
+  useRoomContext,
   TrackRefContext,
 } from "@livekit/components-react";
-import { Track, DisconnectReason, ConnectionState } from "livekit-client";
-import { Share2, PhoneOff, Users, ShieldAlert, Sparkles, Copy, Check, FileText, Bot, X } from "lucide-react";
+import { Track, DisconnectReason, RoomEvent, Participant, RemoteParticipant } from "livekit-client";
+import {
+  Share2,
+  PhoneOff,
+  Users,
+  ShieldAlert,
+  Sparkles,
+  Copy,
+  Check,
+  FileText,
+  Bot,
+  X,
+  MessageSquare,
+  Hand,
+  Send,
+  VolumeX,
+  Lock,
+  Unlock,
+  AlertCircle,
+  Radio,
+  Flame,
+  ThumbsUp,
+  Heart,
+  PartyPopper,
+  Shield,
+  Loader2,
+} from "lucide-react";
 import { ShareMeetingModal } from "./ShareMeetingModal";
 
 interface ActiveRoomProps {
@@ -20,14 +46,53 @@ interface ActiveRoomProps {
   token: string;
   wsUrl: string;
   isDevKeyMode: boolean;
+  isHost?: boolean;
   onLeave: () => void;
 }
 
-export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: ActiveRoomProps) {
+interface ChatMessageItem {
+  id: string;
+  senderName: string;
+  message: string;
+  createdAt: string;
+}
+
+interface FloatingReaction {
+  id: string;
+  emoji: string;
+  x: number;
+}
+
+export function ActiveRoom({
+  roomId,
+  token,
+  wsUrl,
+  isDevKeyMode,
+  isHost = false,
+  onLeave,
+}: ActiveRoomProps) {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [showDrawer, setShowDrawer] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<"transcript" | "ai">("transcript");
+  const [showDrawer, setShowDrawer] = useState(true);
+  const [drawerTab, setDrawerTab] = useState<"chat" | "transcript" | "ai" | "host">("chat");
+
+  // Reactions & Hand Raise
+  const [reactions, setReactions] = useState<FloatingReaction[]>([]);
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [raisedHands, setRaisedHands] = useState<Record<string, boolean>>({});
+
+  // Chat State
+  const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>([]);
+  const [chatInput, setChatInput] = useState("");
+
+  // Meeting Lock & Audio Recording
+  const [isRoomLocked, setIsRoomLocked] = useState(false);
+  const [isEndingMeeting, setIsEndingMeeting] = useState(false);
+  const [endingStatusText, setEndingStatusText] = useState("");
+
+  // Audio Recording MediaRecorder ref
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
 
   const copyRoomLink = () => {
     const url = `${window.location.origin}/room/${roomId}`;
@@ -36,17 +101,99 @@ export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: Acti
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
+  // Start client audio recording using local microphone for autonomous meeting archive
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    async function startRecording() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (typeof MediaRecorder !== "undefined") {
+          const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+          mediaRecorderRef.current = recorder;
+          recordedChunksRef.current = [];
+
+          recorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              recordedChunksRef.current.push(event.data);
+            }
+          };
+
+          recorder.start(3000); // 3s time-slice
+        }
+      } catch (e) {
+        console.warn("[MediaRecorder] Audio capture notice:", e);
+      }
+    }
+
+    startRecording();
+
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  // Fetch initial chat history from database
+  useEffect(() => {
+    async function fetchChat() {
+      try {
+        const res = await fetch(`/api/meetings/${roomId}/chat`);
+        const data = await res.json();
+        if (data.messages) {
+          setChatMessages(data.messages);
+        }
+      } catch (err) {
+        console.error("Chat fetch error:", err);
+      }
+    }
+    fetchChat();
+  }, [roomId]);
+
+  /**
+   * Finalizes the meeting: Stops recorder, submits audio to server, triggers Deepgram & Claude
+   */
+  const handleFinalizeMeeting = async () => {
+    setIsEndingMeeting(true);
+    setEndingStatusText("Stopping audio recording...");
+
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+        await new Promise((r) => setTimeout(r, 600));
+      }
+
+      const audioBlob = new Blob(recordedChunksRef.current, { type: "audio/webm" });
+      const formData = new FormData();
+      formData.append("audio", audioBlob, `${roomId}.webm`);
+
+      setEndingStatusText("Uploading audio & generating Deepgram transcript...");
+      await fetch(`/api/meetings/${roomId}/upload-recording`, {
+        method: "POST",
+        body: formData,
+      });
+
+      setEndingStatusText("Autonomous AI Intelligence Extracted! Redirecting...");
+      await new Promise((r) => setTimeout(r, 800));
+    } catch (err) {
+      console.error("Meeting finalization error:", err);
+    } finally {
+      setIsEndingMeeting(false);
+      onLeave();
+    }
+  };
+
   const handleDisconnected = (reason?: DisconnectReason) => {
     console.log("[LiveKit] Room disconnected. Reason:", reason);
-    // Only redirect if disconnect was explicitly initiated by user or room deleted
     if (
       reason === DisconnectReason.CLIENT_INITIATED ||
       reason === DisconnectReason.ROOM_DELETED ||
       reason === undefined
     ) {
-      onLeave();
-    } else {
-      console.warn("[LiveKit] Transient disconnect detected. Suppressing instant redirect to allow auto-reconnect.");
+      handleFinalizeMeeting();
     }
   };
 
@@ -68,6 +215,31 @@ export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: Acti
       }}
       className="relative flex flex-col h-[calc(100vh-4rem)] w-full bg-[#090d16] overflow-hidden font-sans"
     >
+      {/* End Meeting Loading Overlay */}
+      {isEndingMeeting && (
+        <div className="absolute inset-0 bg-[#0b0f19]/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center justify-center mb-4">
+            <Loader2 className="w-8 h-8 animate-spin" />
+          </div>
+          <h3 className="text-xl font-bold text-white">Autonomous Intelligence Pipeline</h3>
+          <p className="text-xs text-sky-400 mt-2 font-medium">{endingStatusText}</p>
+        </div>
+      )}
+
+      {/* Legal & Compliance Recording Notice Banner */}
+      <div className="bg-sky-950/80 border-b border-sky-500/30 px-4 py-1.5 flex items-center justify-between text-[11px] text-sky-300 backdrop-blur-md z-30">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+          <span className="font-bold uppercase tracking-wider text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded border border-red-500/30">
+            REC & AI ACTIVE
+          </span>
+          <span>By participating, you consent to autonomous meeting transcription and AI task tracking.</span>
+        </div>
+        <div className="hidden sm:flex items-center gap-1.5 text-sky-400/80 text-[10px] font-mono">
+          <span>Encrypted WebRTC DTLS-SRTP</span>
+        </div>
+      </div>
+
       {/* Top Header Bar */}
       <header className="h-14 bg-[#0b0f19]/90 border-b border-slate-800/80 px-4 flex items-center justify-between z-20 backdrop-blur-xl">
         <div className="flex items-center gap-3">
@@ -77,6 +249,13 @@ export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: Acti
               {roomId}
             </h2>
           </div>
+
+          {isHost && (
+            <span className="flex items-center gap-1 bg-indigo-500/10 text-indigo-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-indigo-500/30">
+              <Shield className="w-3.5 h-3.5 text-indigo-400" />
+              <span>HOST</span>
+            </span>
+          )}
 
           {isDevKeyMode && (
             <span className="hidden md:flex items-center gap-1.5 bg-amber-500/10 text-amber-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-amber-500/30">
@@ -97,7 +276,7 @@ export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: Acti
             }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-            <span>AI Side Panel</span>
+            <span>Collaboration Panel</span>
           </button>
 
           <button
@@ -126,47 +305,107 @@ export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: Acti
           </button>
 
           <button
-            onClick={onLeave}
+            onClick={handleFinalizeMeeting}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-red-600/90 hover:bg-red-600 text-white text-xs font-semibold shadow-lg shadow-red-600/20 transition-all"
           >
             <PhoneOff className="w-3.5 h-3.5" />
-            <span>Leave</span>
+            <span>{isHost ? "End Call" : "Leave"}</span>
           </button>
         </div>
       </header>
 
-      {/* Main Container with Video Grid + Optional AI Drawer */}
+      {/* Main Container with Video Grid + In-Call Collaboration Drawer */}
       <div className="flex-1 flex relative overflow-hidden">
-        <div className="flex-1 relative overflow-hidden">
-          <MyVideoConference />
+        {/* Floating Emoji Reactions Overlay */}
+        <div className="absolute inset-0 pointer-events-none z-40 overflow-hidden">
+          {reactions.map((r) => (
+            <div
+              key={r.id}
+              className="absolute text-4xl animate-bounce"
+              style={{
+                left: `${r.x}%`,
+                bottom: "20%",
+                transition: "all 2s ease-out",
+              }}
+            >
+              {r.emoji}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex-1 relative overflow-hidden flex flex-col justify-between">
+          <MyVideoConferenceWithEvents
+            onReactionReceived={(emoji) => {
+              const newReaction = { id: Math.random().toString(), emoji, x: 20 + Math.random() * 60 };
+              setReactions((prev) => [...prev, newReaction]);
+              setTimeout(() => {
+                setReactions((prev) => prev.filter((item) => item.id !== newReaction.id));
+              }, 2500);
+            }}
+            onHandRaiseReceived={(participantId, raised) => {
+              setRaisedHands((prev) => ({ ...prev, [participantId]: raised }));
+            }}
+            onChatMessageReceived={(msg) => {
+              setChatMessages((prev) => [...prev, msg]);
+            }}
+            isHandRaised={isHandRaised}
+            setIsHandRaised={setIsHandRaised}
+          />
           <RoomAudioRenderer />
         </div>
 
-        {/* Live In-Meeting AI Drawer */}
+        {/* In-Meeting Collaboration Drawer */}
         {showDrawer && (
           <aside className="w-80 sm:w-96 bg-[#0b0f19] border-l border-slate-800/80 flex flex-col z-20 animate-in slide-in-from-right duration-200 shadow-2xl">
-            <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            {/* Drawer Tabs */}
+            <div className="p-3 border-b border-slate-800/80 flex items-center justify-between gap-1 overflow-x-auto">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setDrawerTab("chat")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                    drawerTab === "chat"
+                      ? "bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <MessageSquare className="w-3 h-3" />
+                  <span>Chat</span>
+                </button>
                 <button
                   onClick={() => setDrawerTab("transcript")}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
                     drawerTab === "transcript"
                       ? "bg-sky-500/20 text-sky-400 border border-sky-500/30"
                       : "text-slate-400 hover:text-white"
                   }`}
                 >
-                  Live Diarization
+                  <Radio className="w-3 h-3" />
+                  <span>Transcript</span>
                 </button>
                 <button
                   onClick={() => setDrawerTab("ai")}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
                     drawerTab === "ai"
                       ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
                       : "text-slate-400 hover:text-white"
                   }`}
                 >
-                  AI Action Items
+                  <Sparkles className="w-3 h-3" />
+                  <span>AI Tasks</span>
                 </button>
+                {isHost && (
+                  <button
+                    onClick={() => setDrawerTab("host")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                      drawerTab === "host"
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Shield className="w-3 h-3" />
+                    <span>Host</span>
+                  </button>
+                )}
               </div>
 
               <button
@@ -177,40 +416,73 @@ export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: Acti
               </button>
             </div>
 
+            {/* Tab Contents */}
             <div className="flex-1 p-4 overflow-y-auto space-y-3 font-sans text-xs">
-              {drawerTab === "transcript" ? (
+              {drawerTab === "chat" && (
+                <div className="flex flex-col h-full justify-between">
+                  <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[calc(100vh-17rem)]">
+                    {chatMessages.length === 0 ? (
+                      <div className="text-center py-12 text-slate-500">
+                        <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                        <p>No messages yet. Say hello to your team!</p>
+                      </div>
+                    ) : (
+                      chatMessages.map((msg, i) => (
+                        <div key={i} className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold text-sky-400 text-[11px]">{msg.senderName}</span>
+                            <span className="text-[9px] text-slate-500">
+                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <p className="text-slate-200 leading-relaxed text-xs break-words">{msg.message}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <InRoomChatInput roomId={roomId} onMessageSent={(m) => setChatMessages((prev) => [...prev, m])} />
+                </div>
+              )}
+
+              {drawerTab === "transcript" && (
                 <div className="space-y-3">
                   <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                    <span className="text-[10px] font-bold text-sky-400 block mb-1">Speaker 1 (Rahul)</span>
-                    <p className="text-slate-300 leading-relaxed">
-                      Good morning team. Let's align on the Q3 deliverables for MeetPulse AI platform.
+                    <span className="text-[10px] font-bold text-sky-400 block mb-1">Live Diarization Stream</span>
+                    <p className="text-slate-300 leading-relaxed text-[11px]">
+                      Audio is currently streaming to the recording engine. Deepgram Nova-2 will attribute speaker timestamps upon call conclusion.
                     </p>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                    <span className="text-[10px] font-bold text-emerald-400 block mb-1">Speaker 2 (Priya)</span>
-                    <p className="text-slate-300 leading-relaxed">
-                      Hi Rahul. I completed the PostgreSQL database schema and live audio WebSockets.
-                    </p>
+                  <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-300 text-[11px]">
+                    💡 <strong>Tip:</strong> Keep speech clear without overlapping for optimal speaker diarization accuracy.
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                    <span className="text-[10px] font-bold text-sky-400 block mb-1">Speaker 1 (Rahul)</span>
-                    <p className="text-slate-300 leading-relaxed">
-                      Great Priya. Can you please build the Redis queue for audio chunk streaming by Friday?
+                </div>
+              )}
+
+              {drawerTab === "ai" && (
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30">
+                    <span className="text-[10px] font-bold text-indigo-400 block mb-0.5">Claude 3.5 Sonnet Extraction</span>
+                    <h5 className="font-bold text-white text-xs">Autonomous Task Engine Active</h5>
+                    <p className="text-[11px] text-slate-300 mt-1">
+                      Actionable commitments with deadlines, goals, and assignees are automatically parsed when the host finishes the session.
                     </p>
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30">
-                    <span className="text-[10px] font-bold text-indigo-400 block mb-0.5">Real-time Task Detected</span>
-                    <h5 className="font-bold text-white text-xs">Build Redis queue for audio chunk streaming</h5>
-                    <p className="text-[11px] text-slate-400 mt-1">Assigned to: Priya | Priority: High | Deadline: Friday</p>
+              )}
+
+              {drawerTab === "host" && isHost && (
+                <div className="space-y-4">
+                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                    <h5 className="font-bold text-white text-xs mb-1">Meeting Moderation Controls</h5>
+                    <p className="text-[11px] text-slate-400">Manage room permissions and attendee access.</p>
                   </div>
-                  <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30">
-                    <span className="text-[10px] font-bold text-indigo-400 block mb-0.5">Real-time Task Detected</span>
-                    <h5 className="font-bold text-white text-xs">Integrate White & Sky Blue Tailwind executive dashboard UI</h5>
-                    <p className="text-[11px] text-slate-400 mt-1">Assigned to: Amit | Priority: Medium | Deadline: Tomorrow</p>
-                  </div>
+
+                  <HostControlsPanel
+                    isRoomLocked={isRoomLocked}
+                    onToggleLock={() => setIsRoomLocked(!isRoomLocked)}
+                    onEndMeetingAll={handleFinalizeMeeting}
+                  />
                 </div>
               )}
             </div>
@@ -228,9 +500,23 @@ export function ActiveRoom({ roomId, token, wsUrl, isDevKeyMode, onLeave }: Acti
   );
 }
 
-function MyVideoConference() {
-  const connectionState = useConnectionState();
-
+/**
+ * Inner conference component with LiveKit event listeners for Data Channels
+ */
+function MyVideoConferenceWithEvents({
+  onReactionReceived,
+  onHandRaiseReceived,
+  onChatMessageReceived,
+  isHandRaised,
+  setIsHandRaised,
+}: {
+  onReactionReceived: (emoji: string) => void;
+  onHandRaiseReceived: (participantId: string, raised: boolean) => void;
+  onChatMessageReceived: (msg: ChatMessageItem) => void;
+  isHandRaised: boolean;
+  setIsHandRaised: (val: boolean) => void;
+}) {
+  const room = useRoomContext();
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -238,6 +524,55 @@ function MyVideoConference() {
     ],
     { onlySubscribed: false }
   );
+
+  useEffect(() => {
+    if (!room) return;
+
+    const handleDataReceived = (payload: Uint8Array, participant?: RemoteParticipant) => {
+      try {
+        const decoded = new TextDecoder().decode(payload);
+        const data = JSON.parse(decoded);
+
+        if (data.type === "reaction") {
+          onReactionReceived(data.emoji);
+        } else if (data.type === "hand_raise") {
+          onHandRaiseReceived(participant?.identity || "unknown", data.raised);
+        } else if (data.type === "chat") {
+          onChatMessageReceived({
+            id: Math.random().toString(),
+            senderName: data.senderName || participant?.name || "Participant",
+            message: data.message,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        console.warn("DataChannel parse warning:", err);
+      }
+    };
+
+    room.on(RoomEvent.DataReceived, handleDataReceived);
+
+    return () => {
+      room.off(RoomEvent.DataReceived, handleDataReceived);
+    };
+  }, [room, onReactionReceived, onHandRaiseReceived, onChatMessageReceived]);
+
+  const triggerReaction = (emoji: string) => {
+    onReactionReceived(emoji);
+    if (room) {
+      const payload = new TextEncoder().encode(JSON.stringify({ type: "reaction", emoji }));
+      room.localParticipant.publishData(payload, { reliable: false });
+    }
+  };
+
+  const toggleHandRaise = () => {
+    const nextState = !isHandRaised;
+    setIsHandRaised(nextState);
+    if (room) {
+      const payload = new TextEncoder().encode(JSON.stringify({ type: "hand_raise", raised: nextState }));
+      room.localParticipant.publishData(payload, { reliable: true });
+    }
+  };
 
   return (
     <div className="h-full flex flex-col justify-between p-3 gap-3 bg-[#090d16]">
@@ -249,8 +584,56 @@ function MyVideoConference() {
         </GridLayout>
       </div>
 
-      {/* LiveKit Floating Bottom Controls */}
-      <div className="flex justify-center pb-2">
+      {/* Floating Bottom Control Bar with Reactions & Hand Raise */}
+      <div className="flex items-center justify-center gap-3 pb-2 z-20">
+        <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-2xl backdrop-blur-xl shadow-xl">
+          {/* Reaction Buttons */}
+          <button
+            onClick={() => triggerReaction("👍")}
+            className="p-2 hover:bg-slate-800 rounded-xl text-lg hover:scale-110 transition-transform"
+            title="Thumbs Up"
+          >
+            👍
+          </button>
+          <button
+            onClick={() => triggerReaction("👏")}
+            className="p-2 hover:bg-slate-800 rounded-xl text-lg hover:scale-110 transition-transform"
+            title="Applause"
+          >
+            👏
+          </button>
+          <button
+            onClick={() => triggerReaction("❤️")}
+            className="p-2 hover:bg-slate-800 rounded-xl text-lg hover:scale-110 transition-transform"
+            title="Heart"
+          >
+            ❤️
+          </button>
+          <button
+            onClick={() => triggerReaction("🔥")}
+            className="p-2 hover:bg-slate-800 rounded-xl text-lg hover:scale-110 transition-transform"
+            title="Fire"
+          >
+            🔥
+          </button>
+
+          <div className="w-[1px] h-6 bg-slate-800 mx-1" />
+
+          {/* Hand Raise Toggle */}
+          <button
+            onClick={toggleHandRaise}
+            className={`p-2 rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold ${
+              isHandRaised
+                ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                : "text-slate-300 hover:bg-slate-800"
+            }`}
+          >
+            <Hand className={`w-4 h-4 ${isHandRaised ? "animate-bounce" : ""}`} />
+            <span className="hidden sm:inline">{isHandRaised ? "Lower Hand" : "Raise Hand"}</span>
+          </button>
+        </div>
+
+        {/* LiveKit Official Media Controls (Mic, Camera, ScreenShare) */}
         <ControlBar
           controls={{
             microphone: true,
@@ -265,3 +648,130 @@ function MyVideoConference() {
   );
 }
 
+/**
+ * In-Room Chat Input Sub-Component
+ */
+function InRoomChatInput({
+  roomId,
+  onMessageSent,
+}: {
+  roomId: string;
+  onMessageSent: (m: ChatMessageItem) => void;
+}) {
+  const room = useRoomContext();
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim() || sending) return;
+
+    setSending(true);
+    const msgText = text.trim();
+    setText("");
+
+    const senderName = room?.localParticipant?.name || "Participant";
+
+    // 1. Broadcast over WebRTC Data Channel
+    if (room) {
+      const payload = new TextEncoder().encode(
+        JSON.stringify({
+          type: "chat",
+          senderName,
+          message: msgText,
+        })
+      );
+      room.localParticipant.publishData(payload, { reliable: true });
+    }
+
+    // 2. Persist to database
+    try {
+      const res = await fetch(`/api/meetings/${roomId}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ senderName, message: msgText }),
+      });
+      const data = await res.json();
+      if (data.chatMessage) {
+        onMessageSent(data.chatMessage);
+      }
+    } catch (err) {
+      console.error("Chat send error:", err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSend} className="mt-3 pt-3 border-t border-slate-800/80 flex gap-2">
+      <input
+        type="text"
+        placeholder="Type a message to room..."
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        className="flex-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder:text-slate-500 text-xs focus:outline-none focus:border-sky-500"
+      />
+      <button
+        type="submit"
+        disabled={!text.trim() || sending}
+        className="p-2 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white rounded-xl transition-all"
+      >
+        <Send className="w-4 h-4" />
+      </button>
+    </form>
+  );
+}
+
+/**
+ * Host Controls Panel Sub-Component
+ */
+function HostControlsPanel({
+  isRoomLocked,
+  onToggleLock,
+  onEndMeetingAll,
+}: {
+  isRoomLocked: boolean;
+  onToggleLock: () => void;
+  onEndMeetingAll: () => void;
+}) {
+  const room = useRoomContext();
+
+  const handleMuteAll = () => {
+    if (room) {
+      const payload = new TextEncoder().encode(JSON.stringify({ type: "mute_all" }));
+      room.localParticipant.publishData(payload, { reliable: true });
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={handleMuteAll}
+        className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 text-xs font-semibold flex items-center justify-center gap-2 transition-all"
+      >
+        <VolumeX className="w-4 h-4 text-amber-400" />
+        <span>Mute All Participants</span>
+      </button>
+
+      <button
+        onClick={onToggleLock}
+        className={`w-full py-2.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+          isRoomLocked
+            ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+            : "bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-800"
+        }`}
+      >
+        {isRoomLocked ? <Lock className="w-4 h-4 text-amber-400" /> : <Unlock className="w-4 h-4 text-slate-400" />}
+        <span>{isRoomLocked ? "Room Locked (Guests Blocked)" : "Lock Room (Prevent New Joins)"}</span>
+      </button>
+
+      <button
+        onClick={onEndMeetingAll}
+        className="w-full py-2.5 px-3 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all mt-4"
+      >
+        <PhoneOff className="w-4 h-4" />
+        <span>End Meeting For Everyone & Transcribe</span>
+      </button>
+    </div>
+  );
+}

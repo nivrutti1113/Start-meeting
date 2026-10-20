@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { transcribeAudioUrl } from "@/lib/deepgram";
+import { transcribeAudioFileOrUrl } from "@/lib/deepgram";
+import { extractTasksWithClaude } from "@/lib/claude";
 
 export async function POST(
   req: NextRequest,
@@ -25,6 +26,7 @@ export async function POST(
           title: `Meeting ${meetingId}`,
           status: "COMPLETED",
           endedAt: new Date(),
+          recordingUrl: audioUrl,
         },
       });
     } else {
@@ -39,7 +41,7 @@ export async function POST(
     }
 
     // 2. Perform Deepgram Speaker Diarization Transcription
-    const transcriptionResult = await transcribeAudioUrl(audioUrl);
+    const transcriptionResult = await transcribeAudioFileOrUrl(audioUrl);
 
     // 3. Save transcript to Database linked to meetingId
     const transcript = await prisma.transcript.create({
@@ -50,10 +52,44 @@ export async function POST(
       },
     });
 
+    // 4. Automatically trigger Claude AI task extraction & summary
+    const extractionResult = await extractTasksWithClaude(transcriptionResult.speakerFormattedTranscript);
+
+    // Save summary
+    const summary = await prisma.meetingSummary.create({
+      data: {
+        meetingId: meeting.id,
+        summaryText: extractionResult.summary,
+        keyDecisionsJson: JSON.stringify(extractionResult.key_decisions),
+      },
+    });
+
+    // Save tasks
+    const createdTasks = [];
+    for (const t of extractionResult.tasks) {
+      const task = await prisma.task.create({
+        data: {
+          meetingId: meeting.id,
+          assignedBy: t.assigned_by,
+          assignedTo: t.assigned_to,
+          taskDescription: t.task,
+          howTo: t.how_to,
+          goal: t.goal,
+          deadline: t.deadline,
+          priority: t.priority || "Medium",
+          status: "PENDING",
+          sourceQuote: t.source_quote,
+        },
+      });
+      createdTasks.push(task);
+    }
+
     return NextResponse.json({
       success: true,
       meeting,
       transcript,
+      summary,
+      tasks: createdTasks,
       isDevFallback: transcriptionResult.isDevFallback,
     });
   } catch (error: any) {

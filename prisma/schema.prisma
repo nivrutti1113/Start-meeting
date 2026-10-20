@@ -22,15 +22,15 @@ model Company {
 }
 
 model Subscription {
-  id                   String   @id @default(uuid())
+  id                   String    @id @default(uuid())
   companyId            String
   stripeCustomerId     String?
   stripeSubscriptionId String?
-  plan                 String   @default("PRO")
-  status               String   @default("ACTIVE")
+  plan                 String    @default("PRO")
+  status               String    @default("ACTIVE")
   currentPeriodEnd     DateTime?
-  createdAt            DateTime @default(now())
-  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt            DateTime  @default(now())
+  company              Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("subscriptions")
 }
@@ -41,7 +41,10 @@ model User {
   name           String
   email          String               @unique
   phone          String?
-  role           String               @default("EMPLOYEE") // ADMIN, EMPLOYEE
+  passwordHash   String?
+  avatarUrl      String?
+  jobTitle       String?
+  role           String               @default("EMPLOYEE") // SUPERADMIN, ADMIN, MANAGER, EMPLOYEE, GUEST
   tasksCompleted Int                  @default(0)
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
@@ -52,23 +55,41 @@ model User {
 }
 
 model Meeting {
-  id           String               @id @default(uuid())
-  companyId    String?
-  roomName     String               @unique
-  title        String               @default("Untitled Meeting")
-  status       String               @default("ACTIVE") // ACTIVE, RECORDING, COMPLETED
-  recordingUrl String?
-  startedAt    DateTime             @default(now())
-  endedAt      DateTime?
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  company      Company?             @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  participants MeetingParticipant[]
-  transcripts  Transcript[]
-  summaries    MeetingSummary[]
-  tasks        Task[]
+  id              String               @id @default(uuid())
+  companyId       String?
+  hostId          String?
+  roomName        String               @unique
+  title           String               @default("Untitled Meeting")
+  status          String               @default("ACTIVE") // SCHEDULED, ACTIVE, RECORDING, COMPLETED
+  passcode        String?
+  isLocked        Boolean              @default(false)
+  scheduledFor    DateTime?
+  durationMinutes Int?                 @default(30)
+  recordingUrl    String?
+  startedAt       DateTime             @default(now())
+  endedAt         DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  company         Company?             @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  participants    MeetingParticipant[]
+  transcripts     Transcript[]
+  summaries       MeetingSummary[]
+  tasks           Task[]
+  chatMessages    ChatMessage[]
 
   @@map("meetings")
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  meetingId  String
+  senderName String
+  senderId   String?
+  message    String
+  createdAt  DateTime @default(now())
+  meeting    Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
 }
 
 model MeetingParticipant {

@@ -1,0 +1,152 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Company {
+  id               String         @id @default(uuid())
+  name             String
+  clerkOrgId       String?        @unique
+  subscriptionPlan String         @default("PRO") // FREE, PRO, ENTERPRISE
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  users            User[]
+  meetings         Meeting[]
+  subscriptions    Subscription[]
+
+  @@map("companies")
+}
+
+model Subscription {
+  id                   String    @id @default(uuid())
+  companyId            String
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  plan                 String    @default("PRO")
+  status               String    @default("ACTIVE")
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime  @default(now())
+  company              Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model User {
+  id             String               @id @default(uuid())
+  companyId      String?
+  name           String
+  email          String               @unique
+  phone          String?
+  passwordHash   String?
+  avatarUrl      String?
+  jobTitle       String?
+  role           String               @default("EMPLOYEE") // SUPERADMIN, ADMIN, MANAGER, EMPLOYEE, GUEST
+  tasksCompleted Int                  @default(0)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  company        Company?             @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  participants   MeetingParticipant[]
+
+  @@map("users")
+}
+
+model Meeting {
+  id              String               @id @default(uuid())
+  companyId       String?
+  hostId          String?
+  roomName        String               @unique
+  title           String               @default("Untitled Meeting")
+  status          String               @default("ACTIVE") // SCHEDULED, ACTIVE, RECORDING, COMPLETED
+  passcode        String?
+  isLocked        Boolean              @default(false)
+  scheduledFor    DateTime?
+  durationMinutes Int?                 @default(30)
+  recordingUrl    String?
+  startedAt       DateTime             @default(now())
+  endedAt         DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  company         Company?             @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  participants    MeetingParticipant[]
+  transcripts     Transcript[]
+  summaries       MeetingSummary[]
+  tasks           Task[]
+  chatMessages    ChatMessage[]
+
+  @@map("meetings")
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  meetingId  String
+  senderName String
+  senderId   String?
+  message    String
+  createdAt  DateTime @default(now())
+  meeting    Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+model MeetingParticipant {
+  id              String    @id @default(uuid())
+  meetingId       String
+  userId          String?
+  name            String
+  joinTime        DateTime  @default(now())
+  leaveTime       DateTime?
+  durationSeconds Int?
+  meeting         Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("meeting_participants")
+}
+
+model Transcript {
+  id                     String   @id @default(uuid())
+  meetingId              String
+  rawTranscript          String
+  speakerDiarizationJson String?
+  createdAt              DateTime @default(now())
+  meeting                Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("transcripts")
+}
+
+model MeetingSummary {
+  id               String   @id @default(uuid())
+  meetingId        String
+  summaryText      String
+  keyDecisionsJson String
+  createdAt        DateTime @default(now())
+  meeting          Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("meeting_summaries")
+}
+
+model Task {
+  id              String    @id @default(uuid())
+  meetingId       String
+  assignedBy      String
+  assignedTo      String
+  taskDescription String
+  howTo           String?
+  goal            String?
+  deadline        String?
+  priority        String    @default("Medium") // High, Medium, Low
+  status          String    @default("PENDING") // PENDING, DONE
+  sentStatus      String    @default("PENDING") // PENDING, SENT, FAILED
+  whatsappStatus  String    @default("PENDING") // PENDING, SENT, FAILED
+  emailStatus     String    @default("PENDING") // PENDING, SENT, FAILED
+  sentAt          DateTime?
+  retryCount      Int       @default(0)
+  sourceQuote     String?
+  createdAt       DateTime  @default(now())
+  meeting         Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("tasks")
+}

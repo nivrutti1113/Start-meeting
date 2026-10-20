@@ -1,15 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Video, Sparkles, FileText, CheckSquare, LayoutDashboard, UserCheck, Shield, Plus, Menu, X } from "lucide-react";
+import { Video, Sparkles, FileText, CheckSquare, LayoutDashboard, UserCheck, Shield, Plus, Menu, X, LogIn, LogOut, User, Building2 } from "lucide-react";
 import { generateMeetingId } from "@/lib/utils";
+
+interface UserSession {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  companyId: string;
+  companyName: string;
+}
 
 export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<UserSession | null>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+
+  const fetchSession = async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      const data = await res.json();
+      if (data.authenticated && data.user) {
+        setUser(data.user);
+      } else {
+        setUser(null);
+      }
+    } catch (err) {
+      setUser(null);
+    } finally {
+      setLoadingUser(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSession();
+  }, [pathname]);
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      setUser(null);
+      router.push("/login");
+      router.refresh();
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
 
   const handleInstantMeeting = () => {
     const newRoomId = generateMeetingId();
@@ -43,7 +85,7 @@ export function Navbar() {
               </span>
             </div>
             <p className="text-[10px] text-slate-400 font-medium tracking-wide">
-              Autonomous Meeting Intelligence
+              {user ? user.companyName : "Enterprise Meeting Intelligence"}
             </p>
           </div>
         </Link>
@@ -57,7 +99,7 @@ export function Navbar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
                   isActive
                     ? "bg-sky-500/20 text-sky-300 border border-sky-500/30 shadow-sm"
                     : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
@@ -71,19 +113,42 @@ export function Navbar() {
         </nav>
 
         {/* Right CTA Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={handleInstantMeeting}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-sky-500/25 hover:shadow-sky-500/40 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            className="hidden sm:flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 text-white font-semibold text-xs shadow-lg shadow-sky-500/25 transition-all active:scale-[0.98]"
           >
             <Plus className="w-4 h-4" />
             <span>New Call</span>
           </button>
 
-          <div className="hidden sm:flex items-center gap-2 bg-emerald-500/10 text-emerald-400 text-[11px] font-semibold px-3 py-1.5 rounded-full border border-emerald-500/20">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>AI Engine Online</span>
-          </div>
+          {/* User Session Badge / Login Button */}
+          {user ? (
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
+              <div className="w-6 h-6 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center text-xs font-bold">
+                {user.name.charAt(0)}
+              </div>
+              <div className="hidden xl:block text-left">
+                <span className="text-xs font-bold text-white block leading-none">{user.name.split(" ")[0]}</span>
+                <span className="text-[9px] text-sky-400 font-semibold block leading-tight">{user.role}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                title="Sign Out"
+                className="p-1 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors ml-1"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-sky-400 border border-sky-500/30 text-xs font-bold transition-all"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In</span>
+            </Link>
+          )}
 
           {/* Mobile Menu Toggle */}
           <button
@@ -98,6 +163,21 @@ export function Navbar() {
       {/* Mobile Drawer Navigation */}
       {mobileMenuOpen && (
         <div className="lg:hidden bg-[#0b0f19] border-b border-slate-800/80 px-4 py-4 space-y-2 animate-in slide-in-from-top-2 duration-200">
+          {user && (
+            <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-between mb-3">
+              <div>
+                <span className="text-xs font-bold text-white block">{user.name}</span>
+                <span className="text-[10px] text-sky-400 block">{user.companyName} • {user.role}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="text-xs text-red-400 font-semibold flex items-center gap-1"
+              >
+                <LogOut className="w-3 h-3" /> Sign Out
+              </button>
+            </div>
+          )}
+
           {navLinks.map((link) => {
             const Icon = link.icon;
             const isActive = pathname === link.href;
@@ -117,6 +197,7 @@ export function Navbar() {
               </Link>
             );
           })}
+
           <button
             onClick={() => {
               setMobileMenuOpen(false);

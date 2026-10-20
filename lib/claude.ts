@@ -31,23 +31,24 @@ export async function extractTasksWithClaude(
   try {
     const anthropic = new Anthropic({ apiKey });
 
-    const systemPrompt = `Tumhe ek meeting ki poori transcript di gayi hai, speaker names ke saath (format: "Speaker Name: unka bola hua text").
+    const systemPrompt = `You are the MeetPulse AI Autonomous Executive Meeting Intelligence Engine.
+You are provided with a complete meeting transcript containing speaker attributions (format: "Speaker Name: utterance").
 
-Isse nikaalo:
+Analyze this transcript with high precision and extract:
+1. "summary": A concise executive summary of the meeting (3-5 sentences) summarizing the main purpose, discussion points, and outcomes.
+2. "key_decisions": An array of strings representing official decisions agreed upon by the participants.
+3. "tasks": An array of actionable commitments and tasks assigned or self-assigned during the meeting. Each task object MUST have:
+   - "assigned_by": The full name of the speaker who delegated or requested the task (e.g. "Alex Vance").
+   - "assigned_to": The full name of the person responsible for completing it.
+   - "task": A clear, concise, actionable task description.
+   - "how_to": Specific technical steps, tools, or methodologies mentioned for completing it (or null/brief explanation).
+   - "goal": The business or technical purpose/benefit of the task.
+   - "deadline": The agreed due date or time frame (e.g. "Friday, 28th August", "Tomorrow evening").
+   - "priority": "High" | "Medium" | "Low" inferred from tone, urgency, and blockers.
+   - "source_quote": Exact verbatim phrase from the transcript where this task was established.
 
-1. summary: Meeting ka 4-5 line overall summary
-2. key_decisions: Meeting me liye gaye important decisions ki list (array of strings)
-3. tasks: Har task ke liye ye sab fields:
-   - assigned_by: kisne task diya (speaker naam)
-   - assigned_to: kisko diya gaya (naam)
-   - task: kya karna hai (short description)
-   - how_to: agar bataya gaya "kaise banao/karo", uska short summary
-   - goal: iska purpose/benefit kya bataya gaya
-   - deadline: jo time/date bola gaya
-   - priority: High/Medium/Low (tone/context se andaza lagao)
-   - source_quote: transcript ka exact hissa jahan se ye task pehchana
-
-Sirf valid JSON format me jawab do, koi extra markdown wrap text nahi. Output JSON structure:
+Respond ONLY with valid JSON. No conversational wrapper or markdown preamble.
+Expected JSON format:
 {
   "summary": "...",
   "key_decisions": ["..."],
@@ -67,7 +68,7 @@ Sirf valid JSON format me jawab do, koi extra markdown wrap text nahi. Output JS
 
     const response = await anthropic.messages.create({
       model: "claude-3-5-sonnet-20241022",
-      max_tokens: 2000,
+      max_tokens: 2500,
       temperature: 0.1,
       messages: [
         {
@@ -84,15 +85,15 @@ Sirf valid JSON format me jawab do, koi extra markdown wrap text nahi. Output JS
       rawJsonText = responseContent.text;
     }
 
-    // Clean markdown codeblocks if present
+    // Clean markdown code blocks if present
     rawJsonText = rawJsonText.replace(/```json/g, "").replace(/```/g, "").trim();
 
     const parsed = JSON.parse(rawJsonText);
 
     return {
       summary: parsed.summary || "No summary generated.",
-      key_decisions: parsed.key_decisions || [],
-      tasks: parsed.tasks || [],
+      key_decisions: Array.isArray(parsed.key_decisions) ? parsed.key_decisions : [],
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
       isDevFallback: false,
     };
   } catch (err: any) {
@@ -104,16 +105,16 @@ Sirf valid JSON format me jawab do, koi extra markdown wrap text nahi. Output JS
 export function getSampleClaudeFallbackResult(): ClaudeExtractionResult {
   return {
     summary:
-      "The meeting focused on setting up Q3 deliverables for MeetPulse AI platform. Priya confirmed completion of PostgreSQL schema and WebSockets. Rahul assigned Redis audio queueing tasks to Priya with a Friday deadline. Amit committed to completing the executive task dashboard UI with White & Sky Blue theme by tomorrow evening.",
+      "The meeting focused on setting up Q3 deliverables for the MeetPulse AI platform. Priya Sharma confirmed completion of the PostgreSQL schema and WebSockets. Alex Vance assigned Redis audio queueing tasks to Priya with a Friday deadline. Amit Patel committed to completing the executive task dashboard UI with the White & Sky Blue theme by tomorrow evening.",
     key_decisions: [
-      "Use Supabase PostgreSQL for multi-tenant database storage.",
+      "Use PostgreSQL for multi-tenant database isolation and scalability.",
       "Integrate Deepgram Nova-2 with speaker diarization enabled.",
-      "Use Anthropic Claude Sonnet for automated JSON task parsing."
+      "Use Anthropic Claude 3.5 Sonnet for automated JSON task parsing."
     ],
     tasks: [
       {
-        assigned_by: "Rahul (Product Lead)",
-        assigned_to: "Priya (Backend Engineer)",
+        assigned_by: "Alex Vance (Product Lead)",
+        assigned_to: "Priya Sharma (Backend Systems)",
         task: "Build Redis queue for audio chunk streaming",
         how_to: "Set up Redis cluster with exponential retry logic for WebSockets.",
         goal: "Achieve low-latency audio queueing without packet drops.",
@@ -122,8 +123,8 @@ export function getSampleClaudeFallbackResult(): ClaudeExtractionResult {
         source_quote: "Can you please build the Redis queue for audio chunk streaming by Friday? We need low-latency queueing."
       },
       {
-        assigned_by: "Rahul (Product Lead)",
-        assigned_to: "Amit (Frontend Dev)",
+        assigned_by: "Alex Vance (Product Lead)",
+        assigned_to: "Amit Patel (Frontend Dev)",
         task: "Build executive task dashboard UI",
         how_to: "Integrate White and Light Sky Blue Tailwind CSS components for admin task view.",
         goal: "Give company admins a clean review panel before auto-dispatching WhatsApp messages.",
