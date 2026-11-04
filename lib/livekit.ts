@@ -17,7 +17,7 @@ export async function createLiveKitToken({
 }: LiveKitTokenOptions): Promise<{ token: string; isDevKeyMode: boolean; wsUrl: string }> {
   const apiKey = process.env.LIVEKIT_API_KEY || "devkey";
   const apiSecret = process.env.LIVEKIT_API_SECRET || "secret";
-  const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || "ws://localhost:7880";
+  const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL || "ws://localhost:7880";
   const isDevKeyMode = !process.env.LIVEKIT_API_KEY || process.env.LIVEKIT_API_KEY === "devkey";
 
   const userId = identity || `usr_${Math.random().toString(36).substring(2, 9)}`;
@@ -25,7 +25,7 @@ export async function createLiveKitToken({
   const at = new AccessToken(apiKey, apiSecret, {
     identity: userId,
     name: participantName,
-    ttl: "6h",
+    ttl: "720h", // Extended TTL to prevent token expiration from local client/server clock drift
     metadata: JSON.stringify({
       ...metadata,
       isHost,
