@@ -284,14 +284,18 @@ export function PreJoinLobby({ roomId, onJoin }: PreJoinLobbyProps) {
         {/* Right Side: Participant Name & Join Form */}
         <div className="md:col-span-5">
           <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-2xl relative">
-            <div className="flex items-center gap-2 mb-6">
+            <div className="flex items-center gap-2 mb-4">
               <div className="w-8 h-8 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center border border-sky-500/20">
                 <ShieldCheck className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-white text-base">Enter Session</h3>
-                <p className="text-[11px] text-slate-400">Set your display name to connect</p>
+                <h3 className="font-bold text-white text-base">Join Video Session</h3>
+                <p className="text-[11px] text-slate-400">Direct guest access — no login required</p>
               </div>
+            </div>
+
+            <div className="mb-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+              <CheckCircle2 className="w-3 h-3" /> No account needed • Enter name to join
             </div>
 
             <form onSubmit={handleFormSubmit} className="space-y-4">

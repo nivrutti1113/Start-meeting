@@ -4,16 +4,21 @@ import { useState, useEffect, useRef } from "react";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
-  ControlBar,
   GridLayout,
   ParticipantTile,
   useTracks,
   useConnectionState,
   useRoomContext,
+  useLocalParticipant,
   TrackRefContext,
 } from "@livekit/components-react";
 import { Track, DisconnectReason, RoomEvent, Participant, RemoteParticipant } from "livekit-client";
 import {
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  MonitorUp,
   Share2,
   PhoneOff,
   Users,
@@ -47,6 +52,8 @@ interface ActiveRoomProps {
   wsUrl: string;
   isDevKeyMode: boolean;
   isHost?: boolean;
+  initialAudio?: boolean;
+  initialVideo?: boolean;
   onLeave: () => void;
 }
 
@@ -69,6 +76,8 @@ export function ActiveRoom({
   wsUrl,
   isDevKeyMode,
   isHost = false,
+  initialAudio = true,
+  initialVideo = true,
   onLeave,
 }: ActiveRoomProps) {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -101,41 +110,46 @@ export function ActiveRoom({
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
-  // Start client audio recording using local microphone for autonomous meeting archive
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    async function startRecording() {
+  // Safe delayed audio recorder: starts only after WebRTC camera/mic drivers have initialized
+  const startDelayedRecording = () => {
+    setTimeout(async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (typeof MediaRecorder !== "undefined") {
-          const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-          mediaRecorderRef.current = recorder;
-          recordedChunksRef.current = [];
+        if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          if (typeof MediaRecorder !== "undefined") {
+            const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+            mediaRecorderRef.current = recorder;
+            recordedChunksRef.current = [];
 
-          recorder.ondataavailable = (event) => {
-            if (event.data && event.data.size > 0) {
-              recordedChunksRef.current.push(event.data);
-            }
-          };
+            recorder.ondataavailable = (event) => {
+              if (event.data && event.data.size > 0) {
+                recordedChunksRef.current.push(event.data);
+              }
+            };
 
-          recorder.start(3000); // 3s time-slice
+            recorder.start(3000); // 3s time-slice
+          }
         }
       } catch (e) {
-        console.warn("[MediaRecorder] Audio capture notice:", e);
+        console.warn("[MediaRecorder] Delayed audio capture notice:", e);
       }
-    }
+    }, 2500);
+  };
 
-    startRecording();
-
+  useEffect(() => {
     return () => {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.stop();
-      }
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (_) {}
       }
     };
   }, []);
+
+  const handleRoomConnected = () => {
+    console.log("[LiveKit] Connected to room:", roomId);
+    startDelayedRecording();
+  };
 
   // Fetch initial chat history from database
   useEffect(() => {
@@ -199,13 +213,13 @@ export function ActiveRoom({
 
   return (
     <LiveKitRoom
-      video={true}
-      audio={true}
+      video={initialVideo}
+      audio={initialAudio}
       token={token}
       serverUrl={wsUrl}
       data-lk-theme="default"
       connect={true}
-      onConnected={() => console.log("[LiveKit] Connected to room:", roomId)}
+      onConnected={handleRoomConnected}
       onDisconnected={handleDisconnected}
       onMediaDeviceFailure={(failure) => {
         console.warn("[LiveKit] Media Device Failure detected:", failure);
@@ -335,6 +349,9 @@ export function ActiveRoom({
 
         <div className="flex-1 relative overflow-hidden flex flex-col justify-between">
           <MyVideoConferenceWithEvents
+            initialAudio={initialAudio}
+            initialVideo={initialVideo}
+            onLeaveMeeting={handleFinalizeMeeting}
             onReactionReceived={(emoji) => {
               const newReaction = { id: Math.random().toString(), emoji, x: 20 + Math.random() * 60 };
               setReactions((prev) => [...prev, newReaction]);
@@ -501,15 +518,21 @@ export function ActiveRoom({
 }
 
 /**
- * Inner conference component with LiveKit event listeners for Data Channels
+ * Inner conference component with custom media controls and LiveKit event listeners
  */
 function MyVideoConferenceWithEvents({
+  initialAudio = true,
+  initialVideo = true,
+  onLeaveMeeting,
   onReactionReceived,
   onHandRaiseReceived,
   onChatMessageReceived,
   isHandRaised,
   setIsHandRaised,
 }: {
+  initialAudio?: boolean;
+  initialVideo?: boolean;
+  onLeaveMeeting: () => void;
   onReactionReceived: (emoji: string) => void;
   onHandRaiseReceived: (participantId: string, raised: boolean) => void;
   onChatMessageReceived: (msg: ChatMessageItem) => void;
@@ -517,6 +540,14 @@ function MyVideoConferenceWithEvents({
   setIsHandRaised: (val: boolean) => void;
 }) {
   const room = useRoomContext();
+  const {
+    isMicrophoneEnabled,
+    isCameraEnabled,
+    isScreenShareEnabled,
+    localParticipant,
+    lastCameraError,
+  } = useLocalParticipant();
+
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -524,6 +555,23 @@ function MyVideoConferenceWithEvents({
     ],
     { onlySubscribed: false }
   );
+
+  // Auto-enable camera and mic based on lobby state as soon as localParticipant is attached
+  useEffect(() => {
+    if (!localParticipant) return;
+
+    if (initialVideo && !isCameraEnabled) {
+      localParticipant.setCameraEnabled(true).catch((err) => {
+        console.warn("[LocalParticipant] Camera auto-enable failed:", err);
+      });
+    }
+
+    if (initialAudio && !isMicrophoneEnabled) {
+      localParticipant.setMicrophoneEnabled(true).catch((err) => {
+        console.warn("[LocalParticipant] Mic auto-enable failed:", err);
+      });
+    }
+  }, [localParticipant, initialVideo, initialAudio]);
 
   useEffect(() => {
     if (!room) return;
@@ -557,6 +605,33 @@ function MyVideoConferenceWithEvents({
     };
   }, [room, onReactionReceived, onHandRaiseReceived, onChatMessageReceived]);
 
+  const toggleMicrophone = async () => {
+    if (!localParticipant) return;
+    try {
+      await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+    } catch (err) {
+      console.error("[Mic Toggle Error]", err);
+    }
+  };
+
+  const toggleCamera = async () => {
+    if (!localParticipant) return;
+    try {
+      await localParticipant.setCameraEnabled(!isCameraEnabled);
+    } catch (err) {
+      console.error("[Camera Toggle Error]", err);
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    if (!localParticipant) return;
+    try {
+      await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
+    } catch (err) {
+      console.error("[ScreenShare Toggle Error]", err);
+    }
+  };
+
   const triggerReaction = (emoji: string) => {
     onReactionReceived(emoji);
     if (room) {
@@ -576,7 +651,24 @@ function MyVideoConferenceWithEvents({
 
   return (
     <div className="h-full flex flex-col justify-between p-3 gap-3 bg-[#090d16]">
-      <div className="flex-1 relative">
+      {/* Device warnings banner if webcam is blocked or locked */}
+      {lastCameraError && (
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs px-4 py-2 rounded-xl flex items-center justify-between mx-auto max-w-lg z-30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>Camera issue: {lastCameraError.message || "Please allow camera access in your browser."}</span>
+          </div>
+          <button
+            onClick={toggleCamera}
+            className="ml-3 px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 rounded text-[11px] font-bold"
+          >
+            Retry Camera
+          </button>
+        </div>
+      )}
+
+      {/* Video Grid Area */}
+      <div className="flex-1 relative min-h-0">
         <GridLayout tracks={tracks}>
           <TrackRefContext.Consumer>
             {(track) => track && <ParticipantTile trackRef={track} />}
@@ -584,65 +676,124 @@ function MyVideoConferenceWithEvents({
         </GridLayout>
       </div>
 
-      {/* Floating Bottom Control Bar with Reactions & Hand Raise */}
-      <div className="flex items-center justify-center gap-3 pb-2 z-20">
-        <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-2xl backdrop-blur-xl shadow-xl">
-          {/* Reaction Buttons */}
+      {/* Bottom Floating Control Bar */}
+      <div className="flex flex-wrap items-center justify-center gap-2.5 pb-2 z-20">
+        {/* Core Media Controls (Mic, Camera, ScreenShare) */}
+        <div className="flex items-center gap-2 bg-[#0b0f19]/95 border border-slate-800/90 px-3 py-1.5 rounded-2xl backdrop-blur-xl shadow-2xl">
+          {/* Microphone Button */}
+          <button
+            onClick={toggleMicrophone}
+            className={`px-3 py-2 rounded-xl font-bold flex items-center gap-2 text-xs transition-all shadow-md ${
+              isMicrophoneEnabled
+                ? "bg-slate-800 hover:bg-slate-700 text-white border border-slate-700"
+                : "bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40"
+            }`}
+            title={isMicrophoneEnabled ? "Mute Microphone" : "Unmute Microphone"}
+          >
+            {isMicrophoneEnabled ? (
+              <Mic className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <MicOff className="w-4 h-4 text-red-400" />
+            )}
+            <span className="font-medium hidden sm:inline">
+              {isMicrophoneEnabled ? "Mute" : "Unmute"}
+            </span>
+          </button>
+
+          {/* Camera Button */}
+          <button
+            onClick={toggleCamera}
+            className={`px-3 py-2 rounded-xl font-bold flex items-center gap-2 text-xs transition-all shadow-md ${
+              isCameraEnabled
+                ? "bg-slate-800 hover:bg-slate-700 text-white border border-slate-700"
+                : "bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40"
+            }`}
+            title={isCameraEnabled ? "Turn Off Camera" : "Turn On Camera"}
+          >
+            {isCameraEnabled ? (
+              <Video className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <VideoOff className="w-4 h-4 text-red-400" />
+            )}
+            <span className="font-medium hidden sm:inline">
+              {isCameraEnabled ? "Stop Video" : "Start Video"}
+            </span>
+          </button>
+
+          {/* Screen Share Button */}
+          <button
+            onClick={toggleScreenShare}
+            className={`px-3 py-2 rounded-xl font-bold flex items-center gap-2 text-xs transition-all shadow-md ${
+              isScreenShareEnabled
+                ? "bg-sky-500/20 hover:bg-sky-500/30 text-sky-400 border border-sky-500/40"
+                : "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+            }`}
+            title={isScreenShareEnabled ? "Stop Sharing Screen" : "Share Screen"}
+          >
+            <MonitorUp className={`w-4 h-4 ${isScreenShareEnabled ? "text-sky-400 animate-pulse" : "text-slate-300"}`} />
+            <span className="font-medium hidden sm:inline">
+              {isScreenShareEnabled ? "Stop Sharing" : "Share"}
+            </span>
+          </button>
+        </div>
+
+        {/* Emoji Reactions & Hand Raise */}
+        <div className="flex items-center gap-1 bg-[#0b0f19]/95 border border-slate-800/90 px-2.5 py-1.5 rounded-2xl backdrop-blur-xl shadow-2xl">
           <button
             onClick={() => triggerReaction("👍")}
-            className="p-2 hover:bg-slate-800 rounded-xl text-lg hover:scale-110 transition-transform"
+            className="p-1.5 hover:bg-slate-800 rounded-xl text-base hover:scale-125 transition-transform"
             title="Thumbs Up"
           >
             👍
           </button>
           <button
             onClick={() => triggerReaction("👏")}
-            className="p-2 hover:bg-slate-800 rounded-xl text-lg hover:scale-110 transition-transform"
+            className="p-1.5 hover:bg-slate-800 rounded-xl text-base hover:scale-125 transition-transform"
             title="Applause"
           >
             👏
           </button>
           <button
             onClick={() => triggerReaction("❤️")}
-            className="p-2 hover:bg-slate-800 rounded-xl text-lg hover:scale-110 transition-transform"
+            className="p-1.5 hover:bg-slate-800 rounded-xl text-base hover:scale-125 transition-transform"
             title="Heart"
           >
             ❤️
           </button>
           <button
             onClick={() => triggerReaction("🔥")}
-            className="p-2 hover:bg-slate-800 rounded-xl text-lg hover:scale-110 transition-transform"
+            className="p-1.5 hover:bg-slate-800 rounded-xl text-base hover:scale-125 transition-transform"
             title="Fire"
           >
             🔥
           </button>
 
-          <div className="w-[1px] h-6 bg-slate-800 mx-1" />
+          <div className="w-[1px] h-5 bg-slate-800 mx-1" />
 
           {/* Hand Raise Toggle */}
           <button
             onClick={toggleHandRaise}
-            className={`p-2 rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold ${
+            className={`px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-xs font-semibold ${
               isHandRaised
                 ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
                 : "text-slate-300 hover:bg-slate-800"
             }`}
+            title={isHandRaised ? "Lower Hand" : "Raise Hand"}
           >
-            <Hand className={`w-4 h-4 ${isHandRaised ? "animate-bounce" : ""}`} />
+            <Hand className={`w-3.5 h-3.5 ${isHandRaised ? "animate-bounce text-amber-400" : ""}`} />
             <span className="hidden sm:inline">{isHandRaised ? "Lower Hand" : "Raise Hand"}</span>
           </button>
         </div>
 
-        {/* LiveKit Official Media Controls (Mic, Camera, ScreenShare) */}
-        <ControlBar
-          controls={{
-            microphone: true,
-            camera: true,
-            screenShare: true,
-            chat: false,
-            leave: false,
-          }}
-        />
+        {/* Leave Call Button */}
+        <button
+          onClick={onLeaveMeeting}
+          className="px-3.5 py-2 rounded-2xl bg-red-600 hover:bg-red-500 text-white flex items-center gap-1.5 text-xs font-bold shadow-xl shadow-red-600/20 transition-all"
+          title="Leave Meeting"
+        >
+          <PhoneOff className="w-4 h-4" />
+          <span>Leave</span>
+        </button>
       </div>
     </div>
   );

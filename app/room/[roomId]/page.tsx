@@ -14,6 +14,8 @@ export default function MeetingRoomPage() {
   const [joined, setJoined] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [initialAudio, setInitialAudio] = useState(true);
+  const [initialVideo, setInitialVideo] = useState(true);
 
   const [tokenData, setTokenData] = useState<{
     token: string;
@@ -22,7 +24,13 @@ export default function MeetingRoomPage() {
     isHost?: boolean;
   } | null>(null);
 
-  const handleJoinLobby = async (username: string) => {
+  const handleJoinLobby = async (
+    username: string,
+    audioEnabled: boolean = true,
+    videoEnabled: boolean = true
+  ) => {
+    setInitialAudio(audioEnabled);
+    setInitialVideo(videoEnabled);
     setLoading(true);
     setErrorMessage(null);
 
@@ -106,6 +114,8 @@ export default function MeetingRoomPage() {
         wsUrl={tokenData.wsUrl}
         isDevKeyMode={tokenData.isDevKeyMode}
         isHost={tokenData.isHost}
+        initialAudio={initialAudio}
+        initialVideo={initialVideo}
         onLeave={handleLeaveRoom}
       />
     );
