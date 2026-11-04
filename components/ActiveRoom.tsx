@@ -12,7 +12,7 @@ import {
   useLocalParticipant,
   TrackRefContext,
 } from "@livekit/components-react";
-import { Track, DisconnectReason, RoomEvent, Participant, RemoteParticipant } from "livekit-client";
+import { Track, DisconnectReason, RoomEvent, Participant, RemoteParticipant, ConnectionState } from "livekit-client";
 import {
   Mic,
   MicOff,
@@ -98,6 +98,7 @@ export function ActiveRoom({
   const [isRoomLocked, setIsRoomLocked] = useState(false);
   const [isEndingMeeting, setIsEndingMeeting] = useState(false);
   const [endingStatusText, setEndingStatusText] = useState("");
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // Audio Recording MediaRecorder ref
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -148,6 +149,7 @@ export function ActiveRoom({
 
   const handleRoomConnected = () => {
     console.log("[LiveKit] Connected to room:", roomId);
+    setConnectionError(null);
     startDelayedRecording();
   };
 
@@ -202,10 +204,12 @@ export function ActiveRoom({
 
   const handleDisconnected = (reason?: DisconnectReason) => {
     console.log("[LiveKit] Room disconnected. Reason:", reason);
+    if (reason && reason !== DisconnectReason.CLIENT_INITIATED) {
+      setConnectionError(`Room disconnected (${reason})`);
+    }
     if (
       reason === DisconnectReason.CLIENT_INITIATED ||
-      reason === DisconnectReason.ROOM_DELETED ||
-      reason === undefined
+      reason === DisconnectReason.ROOM_DELETED
     ) {
       handleFinalizeMeeting();
     }
@@ -226,6 +230,11 @@ export function ActiveRoom({
       }}
       onError={(error) => {
         console.error("[LiveKit] Room Error:", error);
+        setConnectionError(
+          error?.message?.includes("401") || error?.message?.includes("Unauthorized")
+            ? "LiveKit Cloud authentication failed (401 Unauthorized). Please check that your LIVEKIT_API_KEY and LIVEKIT_API_SECRET match."
+            : error?.message || "WebRTC connection failed. Reconnecting..."
+        );
       }}
       className="relative flex flex-col h-[calc(100vh-4rem)] w-full bg-[#090d16] overflow-hidden font-sans"
     >
@@ -237,6 +246,24 @@ export function ActiveRoom({
           </div>
           <h3 className="text-xl font-bold text-white">Autonomous Intelligence Pipeline</h3>
           <p className="text-xs text-sky-400 mt-2 font-medium">{endingStatusText}</p>
+        </div>
+      )}
+
+      {/* Connection Notice / 401 Alert Banner */}
+      {connectionError && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-200 backdrop-blur-md z-30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>WebRTC Connection Notice:</strong> {connectionError}
+            </span>
+          </div>
+          <button
+            onClick={() => setConnectionError(null)}
+            className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 rounded text-[10px] font-bold text-amber-200"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -556,22 +583,23 @@ function MyVideoConferenceWithEvents({
     { onlySubscribed: false }
   );
 
-  // Auto-enable camera and mic based on lobby state as soon as localParticipant is attached
+  // Auto-enable camera and mic based on lobby state ONLY once room is fully connected
   useEffect(() => {
-    if (!localParticipant) return;
+    if (!room || !localParticipant) return;
+    if (room.state !== ConnectionState.Connected) return;
 
     if (initialVideo && !isCameraEnabled) {
       localParticipant.setCameraEnabled(true).catch((err) => {
-        console.warn("[LocalParticipant] Camera auto-enable failed:", err);
+        console.warn("[LocalParticipant] Camera auto-enable failed:", err?.message || err);
       });
     }
 
     if (initialAudio && !isMicrophoneEnabled) {
       localParticipant.setMicrophoneEnabled(true).catch((err) => {
-        console.warn("[LocalParticipant] Mic auto-enable failed:", err);
+        console.warn("[LocalParticipant] Mic auto-enable failed:", err?.message || err);
       });
     }
-  }, [localParticipant, initialVideo, initialAudio]);
+  }, [room?.state, localParticipant, initialVideo, initialAudio]);
 
   useEffect(() => {
     if (!room) return;
@@ -606,46 +634,67 @@ function MyVideoConferenceWithEvents({
   }, [room, onReactionReceived, onHandRaiseReceived, onChatMessageReceived]);
 
   const toggleMicrophone = async () => {
-    if (!localParticipant) return;
+    if (!localParticipant || room?.state !== ConnectionState.Connected) {
+      console.warn("[Mic Toggle] Room is not connected yet.");
+      return;
+    }
     try {
       await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
-    } catch (err) {
-      console.error("[Mic Toggle Error]", err);
+    } catch (err: any) {
+      console.error("[Mic Toggle Error]", err?.message || err);
     }
   };
 
   const toggleCamera = async () => {
-    if (!localParticipant) return;
+    if (!localParticipant || room?.state !== ConnectionState.Connected) {
+      console.warn("[Camera Toggle] Room is not connected yet.");
+      return;
+    }
     try {
       await localParticipant.setCameraEnabled(!isCameraEnabled);
-    } catch (err) {
-      console.error("[Camera Toggle Error]", err);
+    } catch (err: any) {
+      console.error("[Camera Toggle Error]", err?.message || err);
     }
   };
 
   const toggleScreenShare = async () => {
-    if (!localParticipant) return;
+    if (!localParticipant || room?.state !== ConnectionState.Connected) {
+      console.warn("[ScreenShare Toggle] Room is not connected yet.");
+      return;
+    }
     try {
       await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
-    } catch (err) {
-      console.error("[ScreenShare Toggle Error]", err);
+    } catch (err: any) {
+      console.error("[ScreenShare Toggle Error]", err?.message || err);
     }
   };
 
   const triggerReaction = (emoji: string) => {
     onReactionReceived(emoji);
-    if (room) {
-      const payload = new TextEncoder().encode(JSON.stringify({ type: "reaction", emoji }));
-      room.localParticipant.publishData(payload, { reliable: false });
+    if (room && room.state === ConnectionState.Connected) {
+      try {
+        const payload = new TextEncoder().encode(JSON.stringify({ type: "reaction", emoji }));
+        room.localParticipant.publishData(payload, { reliable: false }).catch((err) => {
+          console.warn("[Reaction] publishData rejected:", err?.message || err);
+        });
+      } catch (err) {
+        console.warn("[Reaction] publishData error:", err);
+      }
     }
   };
 
   const toggleHandRaise = () => {
     const nextState = !isHandRaised;
     setIsHandRaised(nextState);
-    if (room) {
-      const payload = new TextEncoder().encode(JSON.stringify({ type: "hand_raise", raised: nextState }));
-      room.localParticipant.publishData(payload, { reliable: true });
+    if (room && room.state === ConnectionState.Connected) {
+      try {
+        const payload = new TextEncoder().encode(JSON.stringify({ type: "hand_raise", raised: nextState }));
+        room.localParticipant.publishData(payload, { reliable: true }).catch((err) => {
+          console.warn("[HandRaise] publishData rejected:", err?.message || err);
+        });
+      } catch (err) {
+        console.warn("[HandRaise] publishData error:", err);
+      }
     }
   };
 
@@ -823,16 +872,22 @@ function InRoomChatInput({
 
     const senderName = room?.localParticipant?.name || "Participant";
 
-    // 1. Broadcast over WebRTC Data Channel
-    if (room) {
-      const payload = new TextEncoder().encode(
-        JSON.stringify({
-          type: "chat",
-          senderName,
-          message: msgText,
-        })
-      );
-      room.localParticipant.publishData(payload, { reliable: true });
+    // 1. Broadcast over WebRTC Data Channel if connected
+    if (room && room.state === ConnectionState.Connected) {
+      try {
+        const payload = new TextEncoder().encode(
+          JSON.stringify({
+            type: "chat",
+            senderName,
+            message: msgText,
+          })
+        );
+        room.localParticipant.publishData(payload, { reliable: true }).catch((err) => {
+          console.warn("[Chat] publishData rejected:", err?.message || err);
+        });
+      } catch (err) {
+        console.warn("[Chat] Data channel error:", err);
+      }
     }
 
     // 2. Persist to database
@@ -888,9 +943,15 @@ function HostControlsPanel({
   const room = useRoomContext();
 
   const handleMuteAll = () => {
-    if (room) {
-      const payload = new TextEncoder().encode(JSON.stringify({ type: "mute_all" }));
-      room.localParticipant.publishData(payload, { reliable: true });
+    if (room && room.state === ConnectionState.Connected) {
+      try {
+        const payload = new TextEncoder().encode(JSON.stringify({ type: "mute_all" }));
+        room.localParticipant.publishData(payload, { reliable: true }).catch((err) => {
+          console.warn("[Host] Mute all error:", err?.message || err);
+        });
+      } catch (err) {
+        console.warn("[Host] Mute all threw:", err);
+      }
     }
   };
 
