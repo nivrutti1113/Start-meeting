@@ -251,19 +251,27 @@ export function ActiveRoom({
 
       {/* Connection Notice / 401 Alert Banner */}
       {connectionError && (
-        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-200 backdrop-blur-md z-30">
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 flex items-center justify-between text-xs text-amber-200 backdrop-blur-md z-30">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
             <span>
               <strong>WebRTC Connection Notice:</strong> {connectionError}
             </span>
           </div>
-          <button
-            onClick={() => setConnectionError(null)}
-            className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 rounded text-[10px] font-bold text-amber-200"
-          >
-            Dismiss
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-2.5 py-1 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 rounded text-[11px] font-bold text-sky-200 transition-all"
+            >
+              Reconnect Room
+            </button>
+            <button
+              onClick={() => setConnectionError(null)}
+              className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 rounded text-[11px] font-bold text-amber-200"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
