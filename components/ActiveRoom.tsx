@@ -99,6 +99,7 @@ export function ActiveRoom({
   const [isEndingMeeting, setIsEndingMeeting] = useState(false);
   const [endingStatusText, setEndingStatusText] = useState("");
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [mediaDeviceError, setMediaDeviceError] = useState<string | null>(null);
 
   // Audio Recording MediaRecorder ref
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -227,6 +228,7 @@ export function ActiveRoom({
       onDisconnected={handleDisconnected}
       onMediaDeviceFailure={(failure) => {
         console.warn("[LiveKit] Media Device Failure detected:", failure);
+        setMediaDeviceError("Camera or Microphone permission was blocked by your browser. Click the lock/camera icon in your browser address bar and select 'Allow', then click Reconnect.");
       }}
       onError={(error) => {
         console.error("[LiveKit] Room Error:", error);
@@ -246,6 +248,32 @@ export function ActiveRoom({
           </div>
           <h3 className="text-xl font-bold text-white">Autonomous Intelligence Pipeline</h3>
           <p className="text-xs text-sky-400 mt-2 font-medium">{endingStatusText}</p>
+        </div>
+      )}
+
+      {/* Media Device Blocked Banner */}
+      {mediaDeviceError && (
+        <div className="bg-red-500/20 border-b border-red-500/40 px-4 py-2.5 flex items-center justify-between text-xs text-red-200 backdrop-blur-md z-30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>
+              <strong>Hardware Device Warning:</strong> {mediaDeviceError}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-2.5 py-1 bg-red-500/30 hover:bg-red-500/40 border border-red-500/50 rounded text-[11px] font-bold text-white transition-all"
+            >
+              Retry / Reload
+            </button>
+            <button
+              onClick={() => setMediaDeviceError(null)}
+              className="px-2 py-1 bg-slate-800 rounded text-[11px] font-bold text-slate-300"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
@@ -329,20 +357,11 @@ export function ActiveRoom({
           </button>
 
           <button
-            onClick={copyRoomLink}
+            onClick={() => setIsShareModalOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-slate-300 hover:text-white border border-slate-700/60 text-xs font-semibold transition-all"
           >
-            {copiedLink ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Copied!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 text-sky-400" />
-                <span>Share</span>
-              </>
-            )}
+            <Copy className="w-3.5 h-3.5 text-sky-400" />
+            <span>Share Links</span>
           </button>
 
           <button
@@ -575,6 +594,7 @@ function MyVideoConferenceWithEvents({
   setIsHandRaised: (val: boolean) => void;
 }) {
   const room = useRoomContext();
+  const connectionState = useConnectionState();
   const {
     isMicrophoneEnabled,
     isCameraEnabled,
@@ -591,23 +611,32 @@ function MyVideoConferenceWithEvents({
     { onlySubscribed: false }
   );
 
-  // Auto-enable camera and mic based on lobby state ONLY once room is fully connected
+  // Auto-enable camera and mic based on lobby selection as soon as room connects
   useEffect(() => {
     if (!room || !localParticipant) return;
-    if (room.state !== ConnectionState.Connected) return;
 
-    if (initialVideo && !isCameraEnabled) {
-      localParticipant.setCameraEnabled(true).catch((err) => {
-        console.warn("[LocalParticipant] Camera auto-enable failed:", err?.message || err);
-      });
+    const enableInitialMedia = async () => {
+      try {
+        if (initialVideo && !localParticipant.isCameraEnabled) {
+          await localParticipant.setCameraEnabled(true);
+        }
+        if (initialAudio && !localParticipant.isMicrophoneEnabled) {
+          await localParticipant.setMicrophoneEnabled(true);
+        }
+      } catch (err: any) {
+        console.warn("[Media Enable] Notice:", err?.message || err);
+      }
+    };
+
+    if (connectionState === ConnectionState.Connected) {
+      enableInitialMedia();
     }
 
-    if (initialAudio && !isMicrophoneEnabled) {
-      localParticipant.setMicrophoneEnabled(true).catch((err) => {
-        console.warn("[LocalParticipant] Mic auto-enable failed:", err?.message || err);
-      });
-    }
-  }, [room?.state, localParticipant, initialVideo, initialAudio]);
+    room.on(RoomEvent.Connected, enableInitialMedia);
+    return () => {
+      room.off(RoomEvent.Connected, enableInitialMedia);
+    };
+  }, [room, localParticipant, connectionState, initialVideo, initialAudio]);
 
   useEffect(() => {
     if (!room) return;
@@ -642,10 +671,7 @@ function MyVideoConferenceWithEvents({
   }, [room, onReactionReceived, onHandRaiseReceived, onChatMessageReceived]);
 
   const toggleMicrophone = async () => {
-    if (!localParticipant || room?.state !== ConnectionState.Connected) {
-      console.warn("[Mic Toggle] Room is not connected yet.");
-      return;
-    }
+    if (!localParticipant) return;
     try {
       await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
     } catch (err: any) {
@@ -654,10 +680,7 @@ function MyVideoConferenceWithEvents({
   };
 
   const toggleCamera = async () => {
-    if (!localParticipant || room?.state !== ConnectionState.Connected) {
-      console.warn("[Camera Toggle] Room is not connected yet.");
-      return;
-    }
+    if (!localParticipant) return;
     try {
       await localParticipant.setCameraEnabled(!isCameraEnabled);
     } catch (err: any) {
@@ -666,10 +689,7 @@ function MyVideoConferenceWithEvents({
   };
 
   const toggleScreenShare = async () => {
-    if (!localParticipant || room?.state !== ConnectionState.Connected) {
-      console.warn("[ScreenShare Toggle] Room is not connected yet.");
-      return;
-    }
+    if (!localParticipant) return;
     try {
       await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
     } catch (err: any) {
@@ -727,9 +747,7 @@ function MyVideoConferenceWithEvents({
       {/* Video Grid Area */}
       <div className="flex-1 relative min-h-0">
         <GridLayout tracks={tracks}>
-          <TrackRefContext.Consumer>
-            {(track) => track && <ParticipantTile trackRef={track} />}
-          </TrackRefContext.Consumer>
+          <ParticipantTile />
         </GridLayout>
       </div>
 

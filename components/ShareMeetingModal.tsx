@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Copy, Check, Share2, X, Link as LinkIcon, Info, MessageSquare, Mail, UserCheck } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Copy, Check, Share2, X, Link as LinkIcon, Info, MessageSquare, Mail, UserCheck, Smartphone, Laptop } from "lucide-react";
 
 interface ShareMeetingModalProps {
   roomId: string;
@@ -10,32 +10,54 @@ interface ShareMeetingModalProps {
 }
 
 export function ShareMeetingModal({ roomId, isOpen, onClose }: ShareMeetingModalProps) {
-  const [copied, setCopied] = useState(false);
+  const [copiedLocal, setCopiedLocal] = useState(false);
+  const [copiedNetwork, setCopiedNetwork] = useState(false);
+  const [networkIp, setNetworkIp] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/network-ip")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ip && data.ip !== "127.0.0.1") {
+          setNetworkIp(data.ip);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   if (!isOpen) return null;
 
-  const meetingUrl = typeof window !== "undefined" 
+  const localUrl = typeof window !== "undefined"
     ? `${window.location.origin}/room/${roomId}`
     : `http://localhost:3000/room/${roomId}`;
 
-  const copyToClipboard = async () => {
+  const networkUrl = networkIp
+    ? `http://${networkIp}:3000/room/${roomId}`
+    : localUrl;
+
+  const copyToClipboard = async (text: string, isNetwork: boolean) => {
     try {
-      await navigator.clipboard.writeText(meetingUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
+      await navigator.clipboard.writeText(text);
+      if (isNetwork) {
+        setCopiedNetwork(true);
+        setTimeout(() => setCopiedNetwork(false), 2500);
+      } else {
+        setCopiedLocal(true);
+        setTimeout(() => setCopiedLocal(false), 2500);
+      }
     } catch (err) {
       console.error("Failed to copy link:", err);
     }
   };
 
   const shareToWhatsApp = () => {
-    const text = `Join my MeetPulse AI video meeting:\n${meetingUrl}\n\n👉 No login or account required! Just enter your name to join directly.`;
+    const text = `Join my MeetPulse AI video meeting:\n${networkUrl}\n\n👉 No login or account required! Just enter your name to join directly.`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 
   const shareToEmail = () => {
     const subject = `Join MeetPulse AI Video Meeting: ${roomId}`;
-    const body = `Hi,\n\nYou are invited to join a video meeting on MeetPulse AI.\n\nClick the link below to enter directly (no login or installation needed — just enter your name):\n${meetingUrl}\n\nSee you there!`;
+    const body = `Hi,\n\nYou are invited to join a video meeting on MeetPulse AI.\n\nClick the link below to enter directly (no login or installation needed — just enter your name):\n${networkUrl}\n\nSee you there!`;
     window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank");
   };
 
@@ -60,42 +82,65 @@ export function ShareMeetingModal({ roomId, isOpen, onClose }: ShareMeetingModal
         </div>
 
         {/* Guest direct access banner */}
-        <div className="mb-5 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2.5 text-xs text-emerald-300">
+        <div className="mb-4 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2.5 text-xs text-emerald-300">
           <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
           <span><strong>Direct Guest Access:</strong> Anyone can join instantly by simply typing their name. No sign-up or password required!</span>
         </div>
 
-        {/* Meeting Link Box */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 mb-5 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 overflow-hidden text-xs text-slate-300 font-mono">
-            <LinkIcon className="w-4 h-4 text-sky-400 shrink-0" />
-            <span className="truncate">{meetingUrl}</span>
+        {/* Network URL Box (For Phones / Wi-Fi devices) */}
+        {networkIp && (
+          <div className="mb-3">
+            <span className="text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1.5">
+              <Smartphone className="w-3.5 h-3.5 text-sky-400" />
+              <span>For Mobile Phones & other devices (Same Wi-Fi):</span>
+            </span>
+            <div className="bg-slate-950 border border-sky-500/30 rounded-2xl p-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 overflow-hidden text-xs text-sky-300 font-mono">
+                <LinkIcon className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <span className="truncate">{networkUrl}</span>
+              </div>
+              <button
+                onClick={() => copyToClipboard(networkUrl, true)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all shrink-0 ${
+                  copiedNetwork
+                    ? "bg-emerald-500 text-slate-950"
+                    : "bg-sky-500 hover:bg-sky-400 text-white"
+                }`}
+              >
+                {copiedNetwork ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedNetwork ? "Copied!" : "Copy"}</span>
+              </button>
+            </div>
           </div>
+        )}
 
-          <button
-            onClick={copyToClipboard}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 ${
-              copied
-                ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
-                : "bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 text-white shadow-lg shadow-sky-500/20"
-            }`}
-          >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5" />
-                <span>Copied!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                <span>Copy Link</span>
-              </>
-            )}
-          </button>
+        {/* Localhost Link Box */}
+        <div className="mb-4">
+          <span className="text-[11px] font-semibold text-slate-400 mb-1 flex items-center gap-1.5">
+            <Laptop className="w-3.5 h-3.5 text-indigo-400" />
+            <span>For another tab on this computer:</span>
+          </span>
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 overflow-hidden text-xs text-slate-300 font-mono">
+              <LinkIcon className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <span className="truncate">{localUrl}</span>
+            </div>
+            <button
+              onClick={() => copyToClipboard(localUrl, false)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all shrink-0 ${
+                copiedLocal
+                  ? "bg-emerald-500 text-slate-950"
+                  : "bg-slate-800 hover:bg-slate-700 text-white border border-slate-700"
+              }`}
+            >
+              {copiedLocal ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedLocal ? "Copied!" : "Copy"}</span>
+            </button>
+          </div>
         </div>
 
         {/* Quick 1-Click Share Buttons */}
-        <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <button
             onClick={shareToWhatsApp}
             className="p-3 rounded-2xl bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 flex items-center justify-center gap-2 text-xs font-bold transition-all"
@@ -116,7 +161,7 @@ export function ShareMeetingModal({ roomId, isOpen, onClose }: ShareMeetingModal
         <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-400">
           <Info className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
           <p className="leading-relaxed">
-            Encrypted WebRTC call with Deepgram Nova-2 diarization & Claude 3.5 Sonnet task extraction automatically running in the background.
+            Guests on the same Wi-Fi can join directly from their phone with zero installation by clicking the phone link.
           </p>
         </div>
       </div>
